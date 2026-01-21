@@ -1,0 +1,1 @@
+add https://github.com/charmbracelet/bubbles/tree/v2.0.0-rc.1 to the btca json config, update AGENTS.md and make a note to use Bubbles whenever possible
