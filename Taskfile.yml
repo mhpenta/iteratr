@@ -23,7 +23,7 @@ tasks:
   build:
     desc: Build the binary
     vars:
-      LDFLAGS: '-ldflags "-X main.Version={{.VERSION}} -X main.Commit={{.COMMIT}} -X main.BuildTime={{.BUILD_TIME}}"'
+      LDFLAGS: '-ldflags "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.BUILD_TIME}}"'
     cmds:
       - echo "Building {{.BINARY_NAME}}..."
       - go build {{.LDFLAGS}} -o {{.BINARY_NAME}} {{.CMD_DIR}}
@@ -32,7 +32,7 @@ tasks:
   build-all:
     desc: Build for all platforms
     vars:
-      LDFLAGS: '-ldflags "-X main.Version={{.VERSION}} -X main.Commit={{.COMMIT}} -X main.BuildTime={{.BUILD_TIME}}"'
+      LDFLAGS: '-ldflags "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.BUILD_TIME}}"'
     cmds:
       - echo "Building for multiple platforms..."
       - GOOS=linux GOARCH=amd64 go build {{.LDFLAGS}} -o {{.BINARY_NAME}}-linux-amd64 {{.CMD_DIR}}
@@ -45,7 +45,7 @@ tasks:
   install:
     desc: Install the binary to GOPATH/bin
     vars:
-      LDFLAGS: '-ldflags "-X main.Version={{.VERSION}} -X main.Commit={{.COMMIT}} -X main.BuildTime={{.BUILD_TIME}}"'
+      LDFLAGS: '-ldflags "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.BUILD_TIME}}"'
     cmds:
       - echo "Installing {{.BINARY_NAME}}..."
       - go install {{.LDFLAGS}} {{.CMD_DIR}}

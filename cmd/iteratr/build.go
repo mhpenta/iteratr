@@ -1,0 +1,131 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"syscall"
+
+	"github.com/mark3labs/iteratr/internal/orchestrator"
+	"github.com/spf13/cobra"
+)
+
+var buildFlags struct {
+	name              string
+	spec              string
+	template          string
+	extraInstructions string
+	iterations        int
+	headless          bool
+	dataDir           string
+}
+
+var buildCmd = &cobra.Command{
+	Use:   "build",
+	Short: "Run the iterative agent build loop",
+	Long: `Run the iterative agent build loop for a session.
+
+The build command starts an iterative loop where an AI agent works on tasks
+defined in a spec file. It uses embedded NATS for persistence and presents
+a TUI (unless --headless) to monitor progress.`,
+	RunE: runBuild,
+}
+
+func init() {
+	buildCmd.Flags().StringVarP(&buildFlags.name, "name", "n", "", "Session name (default: spec filename stem)")
+	buildCmd.Flags().StringVarP(&buildFlags.spec, "spec", "s", "", "Spec file path (default: ./specs/SPEC.md)")
+	buildCmd.Flags().StringVarP(&buildFlags.template, "template", "t", "", "Custom template file")
+	buildCmd.Flags().StringVarP(&buildFlags.extraInstructions, "extra-instructions", "e", "", "Extra instructions for prompt")
+	buildCmd.Flags().IntVarP(&buildFlags.iterations, "iterations", "i", 0, "Max iterations, 0=infinite (default: 0)")
+	buildCmd.Flags().BoolVar(&buildFlags.headless, "headless", false, "Run without TUI (logging only)")
+	buildCmd.Flags().StringVar(&buildFlags.dataDir, "data-dir", ".iteratr", "Data directory for NATS storage")
+}
+
+func runBuild(cmd *cobra.Command, args []string) error {
+	// Determine spec path
+	specPath := buildFlags.spec
+	if specPath == "" {
+		// Look for SPEC.md in specs/ directory
+		defaultSpec := "specs/SPEC.md"
+		if _, err := os.Stat(defaultSpec); err == nil {
+			specPath = defaultSpec
+		} else {
+			return fmt.Errorf("no spec file found, use --spec to specify path")
+		}
+	}
+
+	// Check if spec file exists
+	if _, err := os.Stat(specPath); os.IsNotExist(err) {
+		return fmt.Errorf("spec file not found: %s", specPath)
+	}
+
+	// Determine session name
+	sessionName := buildFlags.name
+	if sessionName == "" {
+		// Derive from spec filename
+		base := filepath.Base(specPath)
+		ext := filepath.Ext(base)
+		sessionName = strings.TrimSuffix(base, ext)
+
+		// Replace dots with hyphens (NATS subject constraint)
+		sessionName = strings.ReplaceAll(sessionName, ".", "-")
+	}
+
+	// Validate session name (alphanumeric, hyphens, underscores only)
+	for _, r := range sessionName {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return fmt.Errorf("invalid session name: %s (use only alphanumeric, hyphens, underscores)", sessionName)
+		}
+	}
+
+	// Get environment-based config
+	dataDir := os.Getenv("ITERATR_DATA_DIR")
+	if dataDir == "" {
+		dataDir = buildFlags.dataDir
+	}
+
+	// Create orchestrator
+	orch, err := orchestrator.New(orchestrator.Config{
+		SessionName:       sessionName,
+		SpecPath:          specPath,
+		TemplatePath:      buildFlags.template,
+		ExtraInstructions: buildFlags.extraInstructions,
+		Iterations:        buildFlags.iterations,
+		DataDir:           dataDir,
+		Headless:          buildFlags.headless,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create orchestrator: %w", err)
+	}
+
+	// Setup signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Println("\nShutting down gracefully...")
+		if err := orch.Stop(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error during shutdown: %v\n", err)
+		}
+		os.Exit(0)
+	}()
+
+	// Start orchestrator
+	if err := orch.Start(); err != nil {
+		return fmt.Errorf("failed to start orchestrator: %w", err)
+	}
+
+	// Run iteration loop
+	if err := orch.Run(); err != nil {
+		return fmt.Errorf("iteration loop failed: %w", err)
+	}
+
+	// Stop orchestrator
+	if err := orch.Stop(); err != nil {
+		return fmt.Errorf("failed to stop orchestrator: %w", err)
+	}
+
+	return nil
+}
