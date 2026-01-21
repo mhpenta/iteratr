@@ -169,5 +169,219 @@ func TestContextCancellation(t *testing.T) {
 	}
 }
 
+// TestIterationLoopStateTracking verifies that the orchestrator correctly tracks
+// iteration state even when agent execution fails or is unavailable.
+func TestIterationLoopStateTracking(t *testing.T) {
+	// Skip this test if opencode is not available (it's an integration test that needs the agent)
+	t.Skip("Integration test requires opencode agent - run manually")
+
+	// Create temporary directory for test
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, ".iteratr")
+
+	// Create a simple spec file
+	specPath := filepath.Join(tmpDir, "test.md")
+	specContent := `# Test Spec
+
+This is a test spec for iteration loop testing.
+
+## Tasks
+- [ ] Test task 1
+- [ ] Test task 2
+`
+	if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
+		t.Fatalf("failed to write spec file: %v", err)
+	}
+
+	// Create orchestrator with limited iterations
+	orch, err := New(Config{
+		SessionName: "test-iteration-loop",
+		SpecPath:    specPath,
+		Iterations:  2, // Run exactly 2 iterations
+		DataDir:     dataDir,
+		WorkDir:     tmpDir,
+		Headless:    true,
+	})
+	if err != nil {
+		t.Fatalf("failed to create orchestrator: %v", err)
+	}
+
+	// Start orchestrator
+	if err := orch.Start(); err != nil {
+		t.Fatalf("failed to start orchestrator: %v", err)
+	}
+	defer orch.Stop()
+
+	// Run the iteration loop
+	// This will fail because opencode is not available, but we can verify
+	// that state is tracked correctly up to the failure point
+	err = orch.Run()
+
+	// Load the state to verify iterations were tracked
+	state, err := orch.store.LoadState(orch.ctx, "test-iteration-loop")
+	if err != nil {
+		t.Fatalf("failed to load state after Run(): %v", err)
+	}
+
+	// Verify that at least the first iteration was started
+	if len(state.Iterations) == 0 {
+		t.Error("expected at least one iteration to be tracked in state")
+	}
+
+	// Verify iteration numbers are correct
+	if len(state.Iterations) > 0 && state.Iterations[0].Number != 1 {
+		t.Errorf("expected first iteration number to be 1, got %d", state.Iterations[0].Number)
+	}
+}
+
+// TestIterationLoopResumeFromLastIteration verifies that the orchestrator
+// can continue from where it left off in a previous session.
+func TestIterationLoopResumeFromLastIteration(t *testing.T) {
+	// Create temporary directory for test
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, ".iteratr")
+
+	// Create a simple spec file
+	specPath := filepath.Join(tmpDir, "test.md")
+	specContent := `# Test Spec
+
+Resumable session test.
+`
+	if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
+		t.Fatalf("failed to write spec file: %v", err)
+	}
+
+	sessionName := "test-resume-session"
+
+	// First orchestrator - simulate running 2 iterations
+	{
+		orch, err := New(Config{
+			SessionName: sessionName,
+			SpecPath:    specPath,
+			Iterations:  0, // Unlimited for manual control
+			DataDir:     dataDir,
+			WorkDir:     tmpDir,
+			Headless:    true,
+		})
+		if err != nil {
+			t.Fatalf("failed to create first orchestrator: %v", err)
+		}
+
+		if err := orch.Start(); err != nil {
+			t.Fatalf("failed to start first orchestrator: %v", err)
+		}
+
+		// Manually create iteration events to simulate a session with 2 completed iterations
+		if err := orch.store.IterationStart(orch.ctx, sessionName, 1); err != nil {
+			t.Fatalf("failed to start iteration 1: %v", err)
+		}
+		if err := orch.store.IterationComplete(orch.ctx, sessionName, 1); err != nil {
+			t.Fatalf("failed to complete iteration 1: %v", err)
+		}
+		if err := orch.store.IterationStart(orch.ctx, sessionName, 2); err != nil {
+			t.Fatalf("failed to start iteration 2: %v", err)
+		}
+		if err := orch.store.IterationComplete(orch.ctx, sessionName, 2); err != nil {
+			t.Fatalf("failed to complete iteration 2: %v", err)
+		}
+
+		orch.Stop()
+	}
+
+	// Second orchestrator - load same session and verify it would start at iteration 3
+	{
+		orch, err := New(Config{
+			SessionName: sessionName,
+			SpecPath:    specPath,
+			Iterations:  0,
+			DataDir:     dataDir,
+			WorkDir:     tmpDir,
+			Headless:    true,
+		})
+		if err != nil {
+			t.Fatalf("failed to create second orchestrator: %v", err)
+		}
+
+		if err := orch.Start(); err != nil {
+			t.Fatalf("failed to start second orchestrator: %v", err)
+		}
+		defer orch.Stop()
+
+		// Load state and verify starting iteration would be 3
+		state, err := orch.store.LoadState(orch.ctx, sessionName)
+		if err != nil {
+			t.Fatalf("failed to load state: %v", err)
+		}
+
+		expectedStartIteration := len(state.Iterations) + 1
+		if expectedStartIteration != 3 {
+			t.Errorf("expected next iteration to be 3, got %d (found %d previous iterations)",
+				expectedStartIteration, len(state.Iterations))
+		}
+
+		// Verify the 2 previous iterations exist
+		if len(state.Iterations) != 2 {
+			t.Errorf("expected 2 previous iterations, got %d", len(state.Iterations))
+		}
+	}
+}
+
+// TestIterationLoopSessionComplete verifies that the loop stops when session_complete is signaled
+func TestIterationLoopSessionComplete(t *testing.T) {
+	// Create temporary directory for test
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, ".iteratr")
+
+	// Create a simple spec file
+	specPath := filepath.Join(tmpDir, "test.md")
+	specContent := `# Test Spec
+
+Test session complete signal.
+`
+	if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
+		t.Fatalf("failed to write spec file: %v", err)
+	}
+
+	sessionName := "test-session-complete"
+
+	orch, err := New(Config{
+		SessionName: sessionName,
+		SpecPath:    specPath,
+		Iterations:  0, // Unlimited
+		DataDir:     dataDir,
+		WorkDir:     tmpDir,
+		Headless:    true,
+	})
+	if err != nil {
+		t.Fatalf("failed to create orchestrator: %v", err)
+	}
+
+	if err := orch.Start(); err != nil {
+		t.Fatalf("failed to start orchestrator: %v", err)
+	}
+	defer orch.Stop()
+
+	// Mark session as complete before running
+	if err := orch.store.SessionComplete(orch.ctx, sessionName); err != nil {
+		t.Fatalf("failed to mark session complete: %v", err)
+	}
+
+	// Run should detect the session is already complete and exit immediately
+	err = orch.Run()
+	if err != nil {
+		t.Errorf("Run() returned error when session was already complete: %v", err)
+	}
+
+	// Verify no new iterations were started
+	state, err := orch.store.LoadState(orch.ctx, sessionName)
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
+
+	if len(state.Iterations) > 0 {
+		t.Errorf("expected no iterations to run when session is already complete, but found %d", len(state.Iterations))
+	}
+}
+
 // Suppress unused variable warning
 var _ = syscall.SIGTERM
