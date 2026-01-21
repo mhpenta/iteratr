@@ -113,6 +113,30 @@ func (o *Orchestrator) Run() error {
 		return nil
 	}
 
+	// Print session info in headless mode
+	if o.cfg.Headless {
+		// Count tasks by status
+		remainingCount := 0
+		completedCount := 0
+		for _, task := range state.Tasks {
+			switch task.Status {
+			case "remaining":
+				remainingCount++
+			case "completed":
+				completedCount++
+			}
+		}
+
+		fmt.Printf("=== Session: %s ===\n", o.cfg.SessionName)
+		fmt.Printf("Starting at iteration #%d\n", startIteration)
+		if o.cfg.Iterations > 0 {
+			fmt.Printf("Max iterations: %d\n", o.cfg.Iterations)
+		} else {
+			fmt.Println("Max iterations: unlimited")
+		}
+		fmt.Printf("Tasks: %d remaining, %d completed\n\n", remainingCount, completedCount)
+	}
+
 	// Run iteration loop
 	iterationCount := 0
 	for {
@@ -147,10 +171,16 @@ func (o *Orchestrator) Run() error {
 			return fmt.Errorf("failed to build prompt: %w", err)
 		}
 
-		// Setup callbacks for streaming output to TUI
+		// Setup callbacks for streaming output
 		if o.tuiProgram != nil {
+			// Send to TUI
 			o.acpClient.SetOutputCallback(func(content string) {
 				o.tuiProgram.Send(tui.AgentOutputMsg{Content: content})
+			})
+		} else {
+			// Print to stdout in headless mode
+			o.acpClient.SetOutputCallback(func(content string) {
+				fmt.Print(content)
 			})
 		}
 
@@ -163,6 +193,11 @@ func (o *Orchestrator) Run() error {
 		// Log iteration complete
 		if err := o.store.IterationComplete(o.ctx, o.cfg.SessionName, currentIteration); err != nil {
 			return fmt.Errorf("failed to log iteration complete: %w", err)
+		}
+
+		// Print completion message in headless mode
+		if o.cfg.Headless {
+			fmt.Printf("\n✓ Iteration #%d complete\n\n", currentIteration)
 		}
 
 		// Check if session_complete was signaled
