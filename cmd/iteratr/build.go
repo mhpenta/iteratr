@@ -74,10 +74,21 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate session name (alphanumeric, hyphens, underscores only)
+	if sessionName == "" {
+		return fmt.Errorf("session name cannot be empty")
+	}
+	if len(sessionName) > 64 {
+		return fmt.Errorf("session name too long (max 64 characters): %s", sessionName)
+	}
 	for _, r := range sessionName {
 		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
 			return fmt.Errorf("invalid session name: %s (use only alphanumeric, hyphens, underscores)", sessionName)
 		}
+	}
+
+	// Validate iteration count
+	if buildFlags.iterations < 0 {
+		return fmt.Errorf("iterations must be >= 0 (0 means unlimited)")
 	}
 
 	// Get environment-based config

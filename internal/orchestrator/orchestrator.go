@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/mark3labs/iteratr/internal/acp"
+	ierr "github.com/mark3labs/iteratr/internal/errors"
 	"github.com/mark3labs/iteratr/internal/nats"
 	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/template"
@@ -188,9 +190,22 @@ func (o *Orchestrator) Run() error {
 			})
 		}
 
-		// Run agent iteration
+		// Run agent iteration with panic recovery
 		fmt.Printf("Running iteration #%d...\n", currentIteration)
-		if err := o.acpClient.RunIteration(o.ctx, prompt); err != nil {
+		err = ierr.Recover(func() error {
+			return o.acpClient.RunIteration(o.ctx, prompt)
+		})
+		if err != nil {
+			// Log the error but continue with graceful handling
+			fmt.Fprintf(os.Stderr, "Iteration #%d failed: %v\n", currentIteration, err)
+
+			// Check if it's a panic error - these are critical
+			var panicErr *ierr.PanicError
+			if errors.As(err, &panicErr) {
+				return fmt.Errorf("iteration #%d panicked: %w", currentIteration, err)
+			}
+
+			// For other errors, return immediately
 			return fmt.Errorf("iteration #%d failed: %w", currentIteration, err)
 		}
 
@@ -226,7 +241,8 @@ func (o *Orchestrator) Stop() error {
 	}
 	o.stopped = true
 
-	var errs []error
+	// Use MultiError to collect all shutdown errors
+	multiErr := &ierr.MultiError{}
 
 	// Cancel context to signal all goroutines to stop
 	if o.cancel != nil {
@@ -242,7 +258,7 @@ func (o *Orchestrator) Stop() error {
 			// TUI finished cleanly
 		case <-time.After(2 * time.Second):
 			// TUI didn't finish in time, continue with shutdown
-			errs = append(errs, fmt.Errorf("TUI shutdown timed out"))
+			multiErr.Append(ierr.NewTransientError("TUI shutdown", fmt.Errorf("timed out after 2s")))
 		}
 		o.tuiProgram = nil
 	}
@@ -250,13 +266,13 @@ func (o *Orchestrator) Stop() error {
 	// Stop ACP client (kill subprocess if running)
 	if o.acpClient != nil {
 		if err := o.acpClient.Cleanup(); err != nil {
-			errs = append(errs, fmt.Errorf("ACP client cleanup failed: %w", err))
+			multiErr.Append(fmt.Errorf("ACP client cleanup failed: %w", err))
 		}
 	}
 
 	// Close NATS connection and server using helper
 	if err := nats.Shutdown(o.nc, o.ns); err != nil {
-		errs = append(errs, fmt.Errorf("NATS shutdown failed: %w", err))
+		multiErr.Append(fmt.Errorf("NATS shutdown failed: %w", err))
 	}
 
 	// Clear references
@@ -264,11 +280,7 @@ func (o *Orchestrator) Stop() error {
 	o.ns = nil
 
 	// Return combined errors if any
-	if len(errs) > 0 {
-		return fmt.Errorf("shutdown errors: %v", errs)
-	}
-
-	return nil
+	return multiErr.ErrorOrNil()
 }
 
 // startNATS starts the embedded NATS server.
@@ -341,13 +353,19 @@ func (o *Orchestrator) startTUI() error {
 	// Create Bubbletea program
 	o.tuiProgram = tea.NewProgram(o.tuiApp)
 
-	// Start TUI in background
+	// Start TUI in background with panic recovery
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "TUI panic: %v\n", r)
+			}
+			// Signal TUI is done
+			close(o.tuiDone)
+		}()
+
 		if _, err := o.tuiProgram.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
 		}
-		// Signal TUI is done
-		close(o.tuiDone)
 	}()
 
 	return nil

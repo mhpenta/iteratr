@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/mark3labs/iteratr/internal/nats"
@@ -292,6 +293,7 @@ func (s *Store) LoadState(ctx context.Context, session string) (*State, error) {
 	// Fetch events in batches and reduce into state
 	// Using a large batch size to minimize round trips
 	const batchSize = 1000
+	malformedCount := 0
 	for {
 		// Fetch with short timeout to avoid blocking forever
 		msgs, err := consumer.FetchNoWait(batchSize)
@@ -306,7 +308,10 @@ func (s *Store) LoadState(ctx context.Context, session string) (*State, error) {
 			// Unmarshal event
 			var event Event
 			if err := json.Unmarshal(msg.Data(), &event); err != nil {
-				// Skip malformed events but acknowledge them
+				// Log malformed event and skip (but acknowledge to prevent redelivery)
+				malformedCount++
+				meta, _ := msg.Metadata()
+				fmt.Fprintf(os.Stderr, "Warning: Skipping malformed event (seq=%d): %v\n", meta.Sequence.Stream, err)
 				msg.Ack()
 				continue
 			}
@@ -328,6 +333,11 @@ func (s *Store) LoadState(ctx context.Context, session string) (*State, error) {
 		if msgCount < batchSize {
 			break
 		}
+	}
+
+	// Warn if we encountered malformed events
+	if malformedCount > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: Skipped %d malformed events while loading state\n", malformedCount)
 	}
 
 	return state, nil

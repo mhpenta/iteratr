@@ -215,6 +215,14 @@ func formatResult(result any, err error) string {
 
 // RunIteration launches the agent subprocess and runs a single iteration
 func (c *ACPClient) RunIteration(ctx context.Context, prompt string) error {
+	// Validate inputs
+	if prompt == "" {
+		return fmt.Errorf("prompt cannot be empty")
+	}
+	if c.workDir == "" {
+		return fmt.Errorf("working directory not set")
+	}
+
 	// Start opencode as subprocess
 	cmd := exec.CommandContext(ctx, "opencode", "acp")
 	cmd.Stderr = os.Stderr
