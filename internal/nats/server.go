@@ -6,6 +6,7 @@ import (
 
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 // StartEmbeddedNATS starts an embedded NATS server with JetStream enabled
@@ -38,4 +39,11 @@ func StartEmbeddedNATS(dataDir string) (*server.Server, error) {
 // This connection does not use network ports and communicates directly with the server.
 func ConnectInProcess(ns *server.Server) (*nats.Conn, error) {
 	return nats.Connect("", nats.InProcessServer(ns))
+}
+
+// CreateJetStream creates a JetStream context from a NATS connection.
+// This context is used for all JetStream operations including creating streams,
+// consumers, and publishing/subscribing to subjects.
+func CreateJetStream(nc *nats.Conn) (jetstream.JetStream, error) {
+	return jetstream.New(nc)
 }
