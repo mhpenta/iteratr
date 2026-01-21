@@ -8,6 +8,7 @@ import (
 // LogViewer displays scrollable event history with color-coding.
 type LogViewer struct {
 	state  *session.State
+	events []session.Event // Live event stream
 	width  int
 	height int
 }
@@ -39,5 +40,12 @@ func (l *LogViewer) UpdateSize(width, height int) tea.Cmd {
 // UpdateState updates the log viewer with new session state.
 func (l *LogViewer) UpdateState(state *session.State) tea.Cmd {
 	l.state = state
+	return nil
+}
+
+// AddEvent adds a new event to the log viewer.
+// This is called when real-time events are received from NATS.
+func (l *LogViewer) AddEvent(event session.Event) tea.Cmd {
+	l.events = append(l.events, event)
 	return nil
 }

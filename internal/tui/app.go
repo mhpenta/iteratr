@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -42,6 +43,7 @@ type App struct {
 	width       int
 	height      int
 	quitting    bool
+	eventChan   chan session.Event // Channel for receiving NATS events
 }
 
 // NewApp creates a new TUI application with the given session store and NATS connection.
@@ -58,6 +60,7 @@ func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *n
 		notes:       NewNotesPanel(),
 		inbox:       NewInboxPanel(),
 		agent:       NewAgentOutput(),
+		eventChan:   make(chan session.Event, 100), // Buffered channel for events
 	}
 }
 
@@ -66,6 +69,7 @@ func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *n
 func (a *App) Init() tea.Cmd {
 	return tea.Batch(
 		a.subscribeToEvents(),
+		a.waitForEvents(),
 		a.loadInitialState(),
 		a.agent.Init(),
 	)
@@ -104,6 +108,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.logs.UpdateState(msg.State),
 			a.notes.UpdateState(msg.State),
 			a.inbox.UpdateState(msg.State),
+		)
+
+	case EventMsg:
+		// Forward event to log viewer and wait for next event
+		return a, tea.Batch(
+			a.logs.AddEvent(msg.Event),
+			a.waitForEvents(), // Recursively wait for next event
 		)
 	}
 
@@ -308,12 +319,54 @@ func (a *App) renderFooter() string {
 	return styleFooter.Width(a.width).Render(footer)
 }
 
+// waitForEvents listens on the event channel and converts events to messages.
+// This command recursively calls itself to continuously receive events.
+func (a *App) waitForEvents() tea.Cmd {
+	return func() tea.Msg {
+		// Block waiting for next event
+		event, ok := <-a.eventChan
+		if !ok {
+			// Channel closed, stop receiving
+			return nil
+		}
+		return EventMsg{Event: event}
+	}
+}
+
 // subscribeToEvents subscribes to NATS events for this session.
 // This runs in a managed goroutine and sends messages to the Update loop.
 func (a *App) subscribeToEvents() tea.Cmd {
 	return func() tea.Msg {
-		// TODO: Implement NATS subscription
-		// Subscribe to iteratr.{session}.> and forward events to Update loop
+		// Subscribe to all events for this session using wildcard pattern
+		subject := fmt.Sprintf("iteratr.%s.>", a.sessionName)
+
+		// Create subscription that forwards events to the event channel
+		sub, err := a.nc.Subscribe(subject, func(msg *nats.Msg) {
+			// Parse event from message data
+			var event session.Event
+			if err := json.Unmarshal(msg.Data, &event); err != nil {
+				// Skip malformed events
+				return
+			}
+
+			// Send to channel (non-blocking)
+			select {
+			case a.eventChan <- event:
+			default:
+				// Channel full, drop event
+			}
+		})
+
+		if err != nil {
+			// Return error message
+			return fmt.Errorf("failed to subscribe to events: %w", err)
+		}
+
+		// Clean up when context is cancelled
+		<-a.ctx.Done()
+		sub.Unsubscribe()
+		close(a.eventChan)
+
 		return nil
 	}
 }
@@ -341,4 +394,8 @@ type IterationStartMsg struct {
 
 type StateUpdateMsg struct {
 	State *session.State
+}
+
+type EventMsg struct {
+	Event session.Event
 }
