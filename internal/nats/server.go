@@ -56,8 +56,20 @@ func Shutdown(nc *nats.Conn, ns *server.Server) error {
 	if nc != nil {
 		// Drain waits for published messages to be acknowledged
 		// and subscriptions to complete before closing
-		if err := nc.Drain(); err != nil {
-			// Log but don't fail - continue with shutdown
+		// Use a timeout for drain to prevent hanging
+		drainDone := make(chan error, 1)
+		go func() {
+			drainDone <- nc.Drain()
+		}()
+
+		select {
+		case err := <-drainDone:
+			if err != nil {
+				// Drain failed, force close
+				nc.Close()
+			}
+		case <-time.After(2 * time.Second):
+			// Drain timed out, force close
 			nc.Close()
 		}
 	}
@@ -65,8 +77,22 @@ func Shutdown(nc *nats.Conn, ns *server.Server) error {
 	// Shutdown the server with a grace period
 	if ns != nil {
 		ns.Shutdown()
+
 		// WaitForShutdown with timeout to prevent hanging
-		ns.WaitForShutdown()
+		shutdownDone := make(chan struct{})
+		go func() {
+			ns.WaitForShutdown()
+			close(shutdownDone)
+		}()
+
+		select {
+		case <-shutdownDone:
+			// Server shut down cleanly
+		case <-time.After(5 * time.Second):
+			// Shutdown timed out - force stop
+			// Note: There's no force-stop API, but at least we don't hang forever
+			return errors.New("NATS server shutdown timed out")
+		}
 	}
 
 	return nil

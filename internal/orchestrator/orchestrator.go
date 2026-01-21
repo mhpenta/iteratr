@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/mark3labs/iteratr/internal/acp"
@@ -38,8 +39,10 @@ type Orchestrator struct {
 	acpClient  *acp.ACPClient     // ACP client for agent communication
 	tuiApp     *tui.App           // TUI application (nil if headless)
 	tuiProgram *tea.Program       // Bubbletea program
+	tuiDone    chan struct{}      // TUI completion signal
 	ctx        context.Context    // Context for cancellation
 	cancel     context.CancelFunc // Cancel function
+	stopped    bool               // Track if Stop() was already called
 }
 
 // New creates a new Orchestrator with the given configuration.
@@ -60,9 +63,10 @@ func New(cfg Config) (*Orchestrator, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Orchestrator{
-		cfg:    cfg,
-		ctx:    ctx,
-		cancel: cancel,
+		cfg:     cfg,
+		ctx:     ctx,
+		cancel:  cancel,
+		tuiDone: make(chan struct{}),
 	}, nil
 }
 
@@ -213,24 +217,55 @@ func (o *Orchestrator) Run() error {
 }
 
 // Stop gracefully shuts down all components.
+// It collects errors from each component and returns a combined error if any fail.
+// Multiple calls to Stop() are safe and idempotent.
 func (o *Orchestrator) Stop() error {
-	// Cancel context
-	o.cancel()
+	// Make Stop() idempotent - only run once
+	if o.stopped {
+		return nil
+	}
+	o.stopped = true
 
-	// Stop TUI
+	var errs []error
+
+	// Cancel context to signal all goroutines to stop
+	if o.cancel != nil {
+		o.cancel()
+	}
+
+	// Stop TUI and wait for it to finish
 	if o.tuiProgram != nil {
 		o.tuiProgram.Quit()
+		// Wait for TUI to finish with timeout
+		select {
+		case <-o.tuiDone:
+			// TUI finished cleanly
+		case <-time.After(2 * time.Second):
+			// TUI didn't finish in time, continue with shutdown
+			errs = append(errs, fmt.Errorf("TUI shutdown timed out"))
+		}
+		o.tuiProgram = nil
 	}
 
-	// Close NATS connection
-	if o.nc != nil {
-		o.nc.Close()
+	// Stop ACP client (kill subprocess if running)
+	if o.acpClient != nil {
+		if err := o.acpClient.Cleanup(); err != nil {
+			errs = append(errs, fmt.Errorf("ACP client cleanup failed: %w", err))
+		}
 	}
 
-	// Shutdown NATS server
-	if o.ns != nil {
-		o.ns.Shutdown()
-		o.ns.WaitForShutdown()
+	// Close NATS connection and server using helper
+	if err := nats.Shutdown(o.nc, o.ns); err != nil {
+		errs = append(errs, fmt.Errorf("NATS shutdown failed: %w", err))
+	}
+
+	// Clear references
+	o.nc = nil
+	o.ns = nil
+
+	// Return combined errors if any
+	if len(errs) > 0 {
+		return fmt.Errorf("shutdown errors: %v", errs)
 	}
 
 	return nil
@@ -311,6 +346,8 @@ func (o *Orchestrator) startTUI() error {
 		if _, err := o.tuiProgram.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
 		}
+		// Signal TUI is done
+		close(o.tuiDone)
 	}()
 
 	return nil

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/coder/acp-go-sdk"
 	"github.com/mark3labs/iteratr/internal/session"
@@ -19,6 +20,7 @@ type ACPClient struct {
 	conn             *acp.ClientSideConnection
 	currentSessionID acp.SessionId
 	sessionComplete  bool
+	cmd              *exec.Cmd // Current running subprocess
 
 	// Callback for sending updates to TUI
 	onOutput   func(string)
@@ -231,6 +233,9 @@ func (c *ACPClient) RunIteration(ctx context.Context, prompt string) error {
 		return fmt.Errorf("failed to start opencode: %w", err)
 	}
 
+	// Store command reference for cleanup
+	c.cmd = cmd
+
 	// Create client-side connection
 	c.conn = acp.NewClientSideConnection(c, stdin, stdout)
 
@@ -272,5 +277,34 @@ func (c *ACPClient) RunIteration(ctx context.Context, prompt string) error {
 		return fmt.Errorf("agent process failed: %w", err)
 	}
 
+	// Clear command reference after completion
+	c.cmd = nil
+
+	return nil
+}
+
+// Cleanup terminates any running agent subprocess
+func (c *ACPClient) Cleanup() error {
+	if c.cmd != nil && c.cmd.Process != nil {
+		// Try graceful termination first
+		if err := c.cmd.Process.Signal(os.Interrupt); err == nil {
+			// Wait for process to exit with timeout
+			done := make(chan error, 1)
+			go func() {
+				done <- c.cmd.Wait()
+			}()
+
+			select {
+			case <-done:
+				// Process exited
+			case <-time.After(2 * time.Second):
+				// Timeout - force kill
+				if err := c.cmd.Process.Kill(); err != nil {
+					return fmt.Errorf("failed to kill agent process: %w", err)
+				}
+			}
+		}
+		c.cmd = nil
+	}
 	return nil
 }

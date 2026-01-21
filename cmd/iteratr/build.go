@@ -100,6 +100,18 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create orchestrator: %w", err)
 	}
 
+	// Start orchestrator
+	if err := orch.Start(); err != nil {
+		return fmt.Errorf("failed to start orchestrator: %w", err)
+	}
+
+	// Ensure cleanup always runs using defer
+	defer func() {
+		if err := orch.Stop(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error during shutdown: %v\n", err)
+		}
+	}()
+
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -112,19 +124,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		os.Exit(0)
 	}()
 
-	// Start orchestrator
-	if err := orch.Start(); err != nil {
-		return fmt.Errorf("failed to start orchestrator: %w", err)
-	}
-
 	// Run iteration loop
 	if err := orch.Run(); err != nil {
 		return fmt.Errorf("iteration loop failed: %w", err)
-	}
-
-	// Stop orchestrator
-	if err := orch.Stop(); err != nil {
-		return fmt.Errorf("failed to stop orchestrator: %w", err)
 	}
 
 	return nil
