@@ -6,7 +6,7 @@
       "type": "git",
       "name": "opencode",
       "url": "https://github.com/anomalyco/opencode",
-      "branch": "main",
+      "branch": "dev",
       "specialNotes": "OpenCode AI coding agent. Check docs/ and internal/ for implementation details."
     },
     {

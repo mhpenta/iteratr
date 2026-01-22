@@ -15,11 +15,14 @@ type Dashboard struct {
 	state       *session.State
 	width       int
 	height      int
+	agentOutput *AgentOutput // Reference to agent output for rendering
 }
 
 // NewDashboard creates a new Dashboard component.
-func NewDashboard() *Dashboard {
-	return &Dashboard{}
+func NewDashboard(agentOutput *AgentOutput) *Dashboard {
+	return &Dashboard{
+		agentOutput: agentOutput,
+	}
 }
 
 // Update handles messages for the dashboard.
@@ -55,6 +58,12 @@ func (d *Dashboard) Render() string {
 		if currentTask != "" {
 			sections = append(sections, "", currentTask)
 		}
+	}
+
+	// Section 4: Agent Output
+	if d.agentOutput != nil {
+		sections = append(sections, "", styleStatLabel.Render("Agent Output:"))
+		sections = append(sections, d.agentOutput.Render())
 	}
 
 	// Join sections with spacing

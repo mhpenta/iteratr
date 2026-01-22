@@ -18,6 +18,7 @@ type ACPClient struct {
 	store            *session.Store
 	sessionName      string
 	workDir          string
+	mcpURL           string // MCP SSE server URL
 	conn             *acp.ClientSideConnection
 	currentSessionID acp.SessionId
 	sessionComplete  bool
@@ -31,11 +32,12 @@ type ACPClient struct {
 var _ acp.Client = (*ACPClient)(nil)
 
 // NewACPClient creates a new ACP client for managing agent interactions
-func NewACPClient(store *session.Store, sessionName, workDir string) *ACPClient {
+func NewACPClient(store *session.Store, sessionName, workDir, mcpURL string) *ACPClient {
 	return &ACPClient{
 		store:       store,
 		sessionName: sessionName,
 		workDir:     workDir,
+		mcpURL:      mcpURL,
 	}
 }
 
@@ -79,17 +81,31 @@ func (c *ACPClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 	switch {
 	case u.AgentMessageChunk != nil:
 		// Stream agent text output to TUI
-		if u.AgentMessageChunk.Content.Text != nil && c.onOutput != nil {
-			c.onOutput(u.AgentMessageChunk.Content.Text.Text)
+		if u.AgentMessageChunk.Content.Text != nil {
+			text := u.AgentMessageChunk.Content.Text.Text
+			if c.onOutput != nil {
+				c.onOutput(text)
+			}
+		}
+
+	case u.AgentThoughtChunk != nil:
+		// Agent's internal reasoning - only output if there's actual content
+		if u.AgentThoughtChunk.Content.Text != nil && c.onOutput != nil {
+			text := u.AgentThoughtChunk.Content.Text.Text
+			if len(text) > 0 {
+				c.onOutput("[Thinking] " + text)
+			}
 		}
 
 	case u.ToolCall != nil:
-		// Tool call initiated - check if it's one of our custom tools
-		return c.handleToolCall(ctx, u.ToolCall)
+		// Tool call initiated
+		if c.onToolCall != nil {
+			c.onToolCall(u.ToolCall.Title, "started")
+		}
 
 	case u.ToolCallUpdate != nil:
 		// Tool call completed
-		if c.onToolCall != nil {
+		if c.onToolCall != nil && u.ToolCallUpdate.Status != nil {
 			c.onToolCall(string(u.ToolCallUpdate.ToolCallId), string(*u.ToolCallUpdate.Status))
 		}
 	}
@@ -275,10 +291,20 @@ func (c *ACPClient) RunIteration(ctx context.Context, prompt string) error {
 	}
 	logger.Debug("ACP connection initialized")
 
-	// Create session
-	logger.Debug("Creating ACP session")
+	// Create session with our MCP server for session tools
+	logger.Debug("Creating ACP session with MCP server at %s", c.mcpURL)
 	newSess, err := c.conn.NewSession(ctx, acp.NewSessionRequest{
 		Cwd: c.workDir,
+		McpServers: []acp.McpServer{
+			{
+				Sse: &acp.McpServerSse{
+					Name:    "iteratr",
+					Type:    "sse",
+					Url:     c.mcpURL,
+					Headers: []acp.HttpHeader{},
+				},
+			},
+		},
 	})
 	if err != nil {
 		logger.Error("ACP new session failed: %v", err)
@@ -288,9 +314,13 @@ func (c *ACPClient) RunIteration(ctx context.Context, prompt string) error {
 
 	c.currentSessionID = newSess.SessionId
 
-	// Send prompt and stream response
+	// NOTE: session/set_model RPC is broken in OpenCode 1.1.30 due to method name mismatch
+	// (SDK expects unstable_setSessionModel but OpenCode implements setSessionModel).
+	// As a workaround, we set the model via OpenCode's config file.
+
+	// Send prompt and wait for response
 	logger.Debug("Sending prompt to agent (length: %d chars)", len(prompt))
-	_, err = c.conn.Prompt(ctx, acp.PromptRequest{
+	resp, err := c.conn.Prompt(ctx, acp.PromptRequest{
 		SessionId: newSess.SessionId,
 		Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
 	})
@@ -298,14 +328,28 @@ func (c *ACPClient) RunIteration(ctx context.Context, prompt string) error {
 		logger.Error("ACP prompt failed: %v", err)
 		return fmt.Errorf("prompt failed: %w", err)
 	}
-	logger.Debug("Prompt sent, waiting for agent to complete")
+	logger.Debug("Prompt completed with stop reason: %s", resp.StopReason)
 
-	// Wait for agent process to complete
-	if err := cmd.Wait(); err != nil {
-		logger.Error("Agent process failed: %v", err)
-		return fmt.Errorf("agent process failed: %w", err)
+	// Prompt is complete - terminate the agent subprocess
+	// OpenCode ACP stays running waiting for more prompts, but we want one iteration per process
+	if cmd.Process != nil {
+		logger.Debug("Terminating agent subprocess")
+		if err := cmd.Process.Signal(os.Interrupt); err != nil {
+			// Process may have already exited
+			logger.Debug("Failed to send interrupt (process may have exited): %v", err)
+		}
+		// Wait briefly for graceful shutdown
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case <-done:
+			logger.Debug("Agent process exited gracefully")
+		case <-time.After(2 * time.Second):
+			logger.Debug("Agent process didn't exit, killing")
+			cmd.Process.Kill()
+			<-done
+		}
 	}
-	logger.Debug("Agent process completed successfully")
 
 	// Clear command reference after completion
 	c.cmd = nil

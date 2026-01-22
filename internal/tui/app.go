@@ -48,18 +48,19 @@ type App struct {
 
 // NewApp creates a new TUI application with the given session store and NATS connection.
 func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *nats.Conn) *App {
+	agent := NewAgentOutput()
 	return &App{
 		store:       store,
 		sessionName: sessionName,
 		nc:          nc,
 		ctx:         ctx,
 		activeView:  ViewDashboard,
-		dashboard:   NewDashboard(),
+		dashboard:   NewDashboard(agent), // Pass agent output to dashboard
 		tasks:       NewTaskList(),
 		logs:        NewLogViewer(),
 		notes:       NewNotesPanel(),
 		inbox:       NewInboxPanel(),
-		agent:       NewAgentOutput(),
+		agent:       agent,
 		eventChan:   make(chan session.Event, 100), // Buffered channel for events
 	}
 }
@@ -111,10 +112,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case EventMsg:
-		// Forward event to log viewer and wait for next event
+		// Forward event to log viewer, reload state, and wait for next event
 		return a, tea.Batch(
 			a.logs.AddEvent(msg.Event),
-			a.waitForEvents(), // Recursively wait for next event
+			a.loadInitialState(), // Reload state to reflect changes
+			a.waitForEvents(),    // Recursively wait for next event
 		)
 	}
 

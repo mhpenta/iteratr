@@ -11,7 +11,8 @@ import (
 
 // Subject pattern constants and helpers
 const (
-	streamName = "iteratr_events"
+	// StreamName is the name of the JetStream stream for iteratr events
+	StreamName = "iteratr_events"
 
 	// Event types
 	EventTypeTask      = "task"
@@ -37,9 +38,9 @@ func SubjectForEvent(session, eventType string) string {
 // The stream captures all events for all sessions with 30-day retention.
 // Subject pattern: iteratr.> matches all sessions and event types.
 func SetupStream(ctx context.Context, js jetstream.JetStream) (jetstream.Stream, error) {
-	logger.Debug("Setting up JetStream stream: %s", streamName)
+	logger.Debug("Setting up JetStream stream: %s", StreamName)
 	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:     streamName,
+		Name:     StreamName,
 		Subjects: []string{"iteratr.>"}, // Match all iteratr events
 		Storage:  jetstream.FileStorage,
 		MaxAge:   30 * 24 * time.Hour, // 30 day retention
@@ -48,7 +49,7 @@ func SetupStream(ctx context.Context, js jetstream.JetStream) (jetstream.Stream,
 		logger.Error("Failed to create/update stream: %v", err)
 		return nil, err
 	}
-	logger.Debug("JetStream stream ready: %s", streamName)
+	logger.Debug("JetStream stream ready: %s", StreamName)
 	return stream, nil
 }
 

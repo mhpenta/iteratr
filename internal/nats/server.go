@@ -2,6 +2,11 @@ package nats
 
 import (
 	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/mark3labs/iteratr/internal/logger"
@@ -10,16 +15,30 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
+// PortFileName is the name of the file that stores the NATS port number
+const PortFileName = "nats.port"
+
 // StartEmbeddedNATS starts an embedded NATS server with JetStream enabled
 // using the specified data directory for file-based storage.
+// The server listens on localhost with an available port, which is written
+// to a port file for external tool processes to connect.
 // Returns the server instance or an error if startup fails.
 func StartEmbeddedNATS(dataDir string) (*server.Server, error) {
 	logger.Debug("Starting embedded NATS server with data dir: %s", dataDir)
 
+	// Find an available port
+	port, err := findAvailablePort()
+	if err != nil {
+		logger.Error("Failed to find available port: %v", err)
+		return nil, fmt.Errorf("failed to find available port: %w", err)
+	}
+	logger.Debug("Found available port: %d", port)
+
 	opts := &server.Options{
-		JetStream:  true,
-		StoreDir:   dataDir,
-		DontListen: true, // No network ports - in-process only
+		JetStream: true,
+		StoreDir:  dataDir,
+		Host:      "127.0.0.1", // Localhost only for security
+		Port:      port,
 	}
 
 	ns, err := server.NewServer(opts)
@@ -39,8 +58,54 @@ func StartEmbeddedNATS(dataDir string) (*server.Server, error) {
 		return nil, errors.New("nats server failed to start within timeout")
 	}
 
-	logger.Debug("NATS server ready for connections")
+	// Write port to file for external processes
+	portFilePath := filepath.Join(dataDir, PortFileName)
+	if err := os.WriteFile(portFilePath, []byte(strconv.Itoa(port)), 0644); err != nil {
+		logger.Error("Failed to write port file: %v", err)
+		ns.Shutdown()
+		return nil, fmt.Errorf("failed to write port file: %w", err)
+	}
+	logger.Debug("Port file written: %s", portFilePath)
+
+	logger.Debug("NATS server ready for connections on port %d", port)
 	return ns, nil
+}
+
+// findAvailablePort finds an available TCP port on localhost
+func findAvailablePort() (int, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port, nil
+}
+
+// ReadPort reads the NATS port from the port file in the data directory
+func ReadPort(dataDir string) (int, error) {
+	portFilePath := filepath.Join(dataDir, PortFileName)
+	data, err := os.ReadFile(portFilePath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read port file: %w", err)
+	}
+	port, err := strconv.Atoi(string(data))
+	if err != nil {
+		return 0, fmt.Errorf("invalid port in port file: %w", err)
+	}
+	return port, nil
+}
+
+// ConnectToPort connects to a NATS server on the specified port
+func ConnectToPort(port int) (*nats.Conn, error) {
+	url := fmt.Sprintf("nats://127.0.0.1:%d", port)
+	logger.Debug("Connecting to NATS at %s", url)
+	conn, err := nats.Connect(url)
+	if err != nil {
+		logger.Error("Failed to connect to NATS: %v", err)
+		return nil, err
+	}
+	logger.Debug("Connected to NATS successfully")
+	return conn, nil
 }
 
 // ConnectInProcess creates an in-process connection to the embedded NATS server.
