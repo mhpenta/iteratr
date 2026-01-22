@@ -449,14 +449,22 @@ func (s *Sidebar) SetFocused(focused bool)                  { s.SetFocus(focused
 func (s *Sidebar) UpdateSize(width, height int) tea.Cmd     { s.SetSize(width, height); return nil }
 func (s *Sidebar) UpdateState(state *session.State) tea.Cmd { s.SetState(state); return nil }
 
-// GetTaskByID returns a task by ID using O(1) lookup.
+// GetTaskByID returns a task by ID using O(1) lookup via taskIndex.
 // Returns nil if task not found.
 func (s *Sidebar) GetTaskByID(id string) *session.Task {
 	if s.state == nil {
 		return nil
 	}
-	// state.Tasks is already a map[string]*Task, so this is O(1)
-	return s.state.Tasks[id]
+	// Use taskIndex to find position in ordered task list
+	idx, ok := s.taskIndex[id]
+	if !ok {
+		return nil
+	}
+	tasks := s.getTasks()
+	if idx < 0 || idx >= len(tasks) {
+		return nil
+	}
+	return tasks[idx]
 }
 
 // GetNoteByID returns a note by ID using O(1) lookup.
