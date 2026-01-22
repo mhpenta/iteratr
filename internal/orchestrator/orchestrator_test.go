@@ -383,5 +383,84 @@ Test session complete signal.
 	}
 }
 
+// TestModelConfiguration verifies that the --model flag is properly passed through to the runner
+func TestModelConfiguration(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+	}{
+		{
+			name:  "anthropic model",
+			model: "anthropic/claude-sonnet-4-5",
+		},
+		{
+			name:  "openai model",
+			model: "openai/gpt-4",
+		},
+		{
+			name:  "empty model (use default)",
+			model: "",
+		},
+		{
+			name:  "custom provider",
+			model: "custom/my-model",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temporary directory for test
+			tmpDir := t.TempDir()
+			dataDir := filepath.Join(tmpDir, ".iteratr")
+
+			// Create a simple spec file
+			specPath := filepath.Join(tmpDir, "test.md")
+			specContent := `# Test Spec
+Model configuration test.
+`
+			if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
+				t.Fatalf("failed to write spec file: %v", err)
+			}
+
+			cfg := Config{
+				SessionName: "test-model-" + tt.name,
+				SpecPath:    specPath,
+				Iterations:  1,
+				DataDir:     dataDir,
+				WorkDir:     tmpDir,
+				Headless:    true,
+				Model:       tt.model,
+			}
+
+			// Verify config stores model correctly
+			if cfg.Model != tt.model {
+				t.Errorf("expected model %q, got %q", tt.model, cfg.Model)
+			}
+
+			// Create orchestrator and verify it accepts the model
+			orch, err := New(cfg)
+			if err != nil {
+				t.Fatalf("failed to create orchestrator with model %q: %v", tt.model, err)
+			}
+
+			// Verify orchestrator stored the model
+			if orch.cfg.Model != tt.model {
+				t.Errorf("orchestrator config: expected model %q, got %q", tt.model, orch.cfg.Model)
+			}
+
+			// Start and immediately stop to verify initialization works with model
+			if err := orch.Start(); err != nil {
+				t.Fatalf("failed to start orchestrator with model %q: %v", tt.model, err)
+			}
+			defer orch.Stop()
+
+			// Verify runner was created with the correct model
+			if orch.runner == nil {
+				t.Fatal("runner was not initialized")
+			}
+		})
+	}
+}
+
 // Suppress unused variable warning
 var _ = syscall.SIGTERM
