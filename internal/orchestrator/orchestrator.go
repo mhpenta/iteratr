@@ -12,7 +12,6 @@ import (
 	"github.com/mark3labs/iteratr/internal/acp"
 	ierr "github.com/mark3labs/iteratr/internal/errors"
 	"github.com/mark3labs/iteratr/internal/logger"
-	"github.com/mark3labs/iteratr/internal/mcp"
 	"github.com/mark3labs/iteratr/internal/nats"
 	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/template"
@@ -42,7 +41,6 @@ type Orchestrator struct {
 	natsPort   int                // NATS server port
 	nc         *natsgo.Conn       // NATS connection
 	store      *session.Store     // Session store
-	mcpServer  *mcp.Server        // MCP SSE server for session tools
 	acpClient  *acp.ACPClient     // ACP client for agent communication
 	tuiApp     *tui.App           // TUI application (nil if headless)
 	tuiProgram *tea.Program       // Bubbletea program
@@ -105,20 +103,11 @@ func (o *Orchestrator) Start() error {
 	}
 	logger.Debug("JetStream setup complete")
 
-	// 4. Start MCP server
-	logger.Debug("Starting MCP server")
-	mcpURL, err := o.startMCPServer()
-	if err != nil {
-		logger.Error("Failed to start MCP server: %v", err)
-		return fmt.Errorf("failed to start MCP server: %w", err)
-	}
-	logger.Debug("MCP server started at %s", mcpURL)
-
-	// 5. Create ACP client
+	// 4. Create ACP client
 	logger.Debug("Creating ACP client")
-	o.acpClient = acp.NewACPClient(o.store, o.cfg.SessionName, o.cfg.WorkDir, mcpURL)
+	o.acpClient = acp.NewACPClient(o.store, o.cfg.SessionName, o.cfg.WorkDir, "")
 
-	// 6. Start TUI if not headless
+	// 5. Start TUI if not headless
 	if !o.cfg.Headless {
 		logger.Debug("Starting TUI")
 		if err := o.startTUI(); err != nil {
@@ -333,20 +322,6 @@ func (o *Orchestrator) Stop() error {
 		}
 	}
 
-	// Stop MCP server
-	if o.mcpServer != nil {
-		logger.Debug("Stopping MCP server")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := o.mcpServer.Stop(ctx); err != nil {
-			logger.Error("MCP server shutdown failed: %v", err)
-			multiErr.Append(fmt.Errorf("MCP server shutdown failed: %w", err))
-		} else {
-			logger.Debug("MCP server stopped")
-		}
-		cancel()
-		o.mcpServer = nil
-	}
-
 	// Close NATS connection and server using helper
 	logger.Debug("Shutting down NATS")
 	if err := nats.Shutdown(o.nc, o.ns); err != nil {
@@ -420,16 +395,6 @@ func (o *Orchestrator) setupJetStream() error {
 	// Create session store
 	o.store = session.NewStore(js, stream)
 	return nil
-}
-
-// startMCPServer starts the MCP SSE server for session tools.
-func (o *Orchestrator) startMCPServer() (string, error) {
-	o.mcpServer = mcp.New(o.store, "0.0.1") // TODO: get version from build
-	url, err := o.mcpServer.Start()
-	if err != nil {
-		return "", fmt.Errorf("failed to start MCP server: %w", err)
-	}
-	return url, nil
 }
 
 // startTUI initializes and starts the Bubbletea TUI.
