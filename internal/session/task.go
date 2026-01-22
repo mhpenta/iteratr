@@ -139,6 +139,59 @@ func (s *Store) TaskStatus(ctx context.Context, session string, params TaskStatu
 	return err
 }
 
+// TaskPriorityParams represents the parameters for updating task priority.
+type TaskPriorityParams struct {
+	ID        string `json:"id"`       // Task ID or prefix (8+ chars)
+	Priority  int    `json:"priority"` // 0-4 (0=critical, 1=high, 2=medium, 3=low, 4=backlog)
+	Iteration int    `json:"iteration"`
+}
+
+// TaskPriority updates the priority of an existing task.
+// The ID parameter supports prefix matching (minimum 8 characters).
+// Priority must be 0-4 (0=critical, 1=high, 2=medium, 3=low, 4=backlog).
+func (s *Store) TaskPriority(ctx context.Context, session string, params TaskPriorityParams) error {
+	// Validate required fields
+	if params.ID == "" {
+		return fmt.Errorf("task ID is required")
+	}
+
+	// Validate priority range
+	if params.Priority < 0 || params.Priority > 4 {
+		return fmt.Errorf("invalid priority: %d (must be 0-4)", params.Priority)
+	}
+
+	// Load current state to resolve task ID prefix
+	state, err := s.LoadState(ctx, session)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+
+	// Resolve task ID (supports prefix matching)
+	taskID, err := resolveTaskID(state, params.ID)
+	if err != nil {
+		return err
+	}
+
+	// Create event metadata
+	meta, _ := json.Marshal(map[string]any{
+		"task_id":   taskID,
+		"priority":  params.Priority,
+		"iteration": params.Iteration,
+	})
+
+	// Create and publish event
+	event := Event{
+		Session: session,
+		Type:    nats.EventTypeTask,
+		Action:  "priority",
+		Data:    fmt.Sprintf("%d", params.Priority), // Store priority in data field for convenience
+		Meta:    meta,
+	}
+
+	_, err = s.PublishEvent(ctx, event)
+	return err
+}
+
 // TaskList returns all tasks grouped by status.
 func (s *Store) TaskList(ctx context.Context, session string) (*TaskListResult, error) {
 	// Load current state
