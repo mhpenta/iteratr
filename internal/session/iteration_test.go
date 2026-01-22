@@ -183,4 +183,56 @@ func TestIterationOperations(t *testing.T) {
 				len(state1.Iterations), len(state2.Iterations))
 		}
 	})
+
+	t.Run("IterationSummary stores summary and tasks worked", func(t *testing.T) {
+		// Use a dedicated session
+		summarySession := "test-iteration-summary"
+
+		// Start an iteration
+		err := store.IterationStart(ctx, summarySession, 1)
+		if err != nil {
+			t.Fatalf("IterationStart failed: %v", err)
+		}
+
+		// Add summary with tasks worked
+		tasksWorked := []string{"task1", "task2", "task3"}
+		summary := "Completed auth refactoring and added tests"
+		err = store.IterationSummary(ctx, summarySession, 1, summary, tasksWorked)
+		if err != nil {
+			t.Fatalf("IterationSummary failed: %v", err)
+		}
+
+		// Load state and verify
+		state, err := store.LoadState(ctx, summarySession)
+		if err != nil {
+			t.Fatalf("LoadState failed: %v", err)
+		}
+
+		// Find iteration 1
+		var iter1 *Iteration
+		for _, iter := range state.Iterations {
+			if iter.Number == 1 {
+				iter1 = iter
+				break
+			}
+		}
+
+		if iter1 == nil {
+			t.Fatal("expected to find iteration 1")
+		}
+
+		if iter1.Summary != summary {
+			t.Errorf("expected summary %q, got %q", summary, iter1.Summary)
+		}
+
+		if len(iter1.TasksWorked) != len(tasksWorked) {
+			t.Errorf("expected %d tasks worked, got %d", len(tasksWorked), len(iter1.TasksWorked))
+		}
+
+		for i, taskID := range tasksWorked {
+			if i >= len(iter1.TasksWorked) || iter1.TasksWorked[i] != taskID {
+				t.Errorf("expected task %d to be %q, got %q", i, taskID, iter1.TasksWorked[i])
+			}
+		}
+	})
 }

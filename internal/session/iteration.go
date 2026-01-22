@@ -65,3 +65,34 @@ func (s *Store) IterationComplete(ctx context.Context, session string, number in
 
 	return nil
 }
+
+// IterationSummary logs a summary for an iteration with tasks worked.
+// Creates an event of type "iteration" with action "summary".
+func (s *Store) IterationSummary(ctx context.Context, session string, number int, summary string, tasksWorked []string) error {
+	// Build metadata
+	meta, err := json.Marshal(map[string]any{
+		"number":       number,
+		"summary":      summary,
+		"tasks_worked": tasksWorked,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal iteration summary metadata: %w", err)
+	}
+
+	// Create event
+	event := Event{
+		Session: session,
+		Type:    nats.EventTypeIteration,
+		Action:  "summary",
+		Meta:    meta,
+		Data:    fmt.Sprintf("Iteration %d: %s", number, summary),
+	}
+
+	// Publish event
+	_, err = s.PublishEvent(ctx, event)
+	if err != nil {
+		return fmt.Errorf("failed to publish iteration summary event: %w", err)
+	}
+
+	return nil
+}
