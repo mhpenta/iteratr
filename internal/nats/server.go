@@ -22,15 +22,15 @@ const PortFileName = "nats.port"
 // using the specified data directory for file-based storage.
 // The server listens on localhost with an available port, which is written
 // to a port file for external tool processes to connect.
-// Returns the server instance or an error if startup fails.
-func StartEmbeddedNATS(dataDir string) (*server.Server, error) {
+// Returns the server instance, port number, and an error if startup fails.
+func StartEmbeddedNATS(dataDir string) (*server.Server, int, error) {
 	logger.Debug("Starting embedded NATS server with data dir: %s", dataDir)
 
 	// Find an available port
 	port, err := findAvailablePort()
 	if err != nil {
 		logger.Error("Failed to find available port: %v", err)
-		return nil, fmt.Errorf("failed to find available port: %w", err)
+		return nil, 0, fmt.Errorf("failed to find available port: %w", err)
 	}
 	logger.Debug("Found available port: %d", port)
 
@@ -44,7 +44,7 @@ func StartEmbeddedNATS(dataDir string) (*server.Server, error) {
 	ns, err := server.NewServer(opts)
 	if err != nil {
 		logger.Error("Failed to create NATS server: %v", err)
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Start server in background goroutine
@@ -55,7 +55,7 @@ func StartEmbeddedNATS(dataDir string) (*server.Server, error) {
 	logger.Debug("Waiting for NATS server to be ready...")
 	if !ns.ReadyForConnections(4 * time.Second) {
 		logger.Error("NATS server failed to start within 4s timeout")
-		return nil, errors.New("nats server failed to start within timeout")
+		return nil, 0, errors.New("nats server failed to start within timeout")
 	}
 
 	// Write port to file for external processes
@@ -63,12 +63,12 @@ func StartEmbeddedNATS(dataDir string) (*server.Server, error) {
 	if err := os.WriteFile(portFilePath, []byte(strconv.Itoa(port)), 0644); err != nil {
 		logger.Error("Failed to write port file: %v", err)
 		ns.Shutdown()
-		return nil, fmt.Errorf("failed to write port file: %w", err)
+		return nil, 0, fmt.Errorf("failed to write port file: %w", err)
 	}
 	logger.Debug("Port file written: %s", portFilePath)
 
 	logger.Debug("NATS server ready for connections on port %d", port)
-	return ns, nil
+	return ns, port, nil
 }
 
 // findAvailablePort finds an available TCP port on localhost

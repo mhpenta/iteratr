@@ -38,6 +38,7 @@ type Config struct {
 type Orchestrator struct {
 	cfg        Config
 	ns         *natsserver.Server // Embedded NATS server
+	natsPort   int                // NATS server port
 	nc         *natsgo.Conn       // NATS connection
 	store      *session.Store     // Session store
 	mcpServer  *mcp.Server        // MCP SSE server for session tools
@@ -372,12 +373,13 @@ func (o *Orchestrator) startNATS() error {
 	}
 
 	// Use the shared nats package to start the server
-	ns, err := nats.StartEmbeddedNATS(dataDir)
+	ns, port, err := nats.StartEmbeddedNATS(dataDir)
 	if err != nil {
 		return fmt.Errorf("failed to start NATS server: %w", err)
 	}
 
 	o.ns = ns
+	o.natsPort = port
 	return nil
 }
 

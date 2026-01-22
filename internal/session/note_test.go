@@ -10,7 +10,7 @@ import (
 func TestNoteOperations(t *testing.T) {
 	// Setup: Create embedded NATS and store
 	ctx := context.Background()
-	ns, err := nats.StartEmbeddedNATS(t.TempDir())
+	ns, _, err := nats.StartEmbeddedNATS(t.TempDir())
 	if err != nil {
 		t.Fatalf("failed to start NATS: %v", err)
 	}

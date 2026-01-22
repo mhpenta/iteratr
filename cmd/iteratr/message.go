@@ -77,7 +77,7 @@ func runMessage(cmd *cobra.Command, args []string) error {
 // running a full orchestrator loop (e.g., message, gen-template).
 func connectToNATS(ctx context.Context, dataDir string) (*natsserver.Server, *natsgo.Conn, *session.Store, error) {
 	// Start embedded NATS server
-	ns, err := nats.StartEmbeddedNATS(dataDir)
+	ns, _, err := nats.StartEmbeddedNATS(dataDir)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to start NATS: %w", err)
 	}

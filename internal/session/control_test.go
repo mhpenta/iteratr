@@ -13,7 +13,7 @@ import (
 
 func TestSessionComplete(t *testing.T) {
 	// Start embedded NATS server
-	srv, err := nats.StartEmbeddedNATS(t.TempDir())
+	srv, _, err := nats.StartEmbeddedNATS(t.TempDir())
 	if err != nil {
 		t.Fatalf("Failed to start NATS: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestSessionComplete(t *testing.T) {
 
 func TestSessionCompleteMultipleTimes(t *testing.T) {
 	// Start embedded NATS server
-	srv, err := nats.StartEmbeddedNATS(t.TempDir())
+	srv, _, err := nats.StartEmbeddedNATS(t.TempDir())
 	if err != nil {
 		t.Fatalf("Failed to start NATS: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestSessionCompleteMultipleTimes(t *testing.T) {
 
 func TestSessionCompleteWithTasks(t *testing.T) {
 	// Start embedded NATS server
-	srv, err := nats.StartEmbeddedNATS(t.TempDir())
+	srv, _, err := nats.StartEmbeddedNATS(t.TempDir())
 	if err != nil {
 		t.Fatalf("Failed to start NATS: %v", err)
 	}
