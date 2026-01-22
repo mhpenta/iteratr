@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mark3labs/iteratr/internal/session"
@@ -11,92 +12,31 @@ import (
 
 // NotesPanel displays notes grouped by type with color-coding.
 type NotesPanel struct {
-	state  *session.State
-	width  int
-	height int
-	offset int // Scroll offset for long note lists
+	viewport viewport.Model
+	state    *session.State
+	width    int
+	height   int
+	focused  bool
 }
 
 // NewNotesPanel creates a new NotesPanel component.
 func NewNotesPanel() *NotesPanel {
-	return &NotesPanel{}
+	vp := viewport.New()
+	return &NotesPanel{
+		viewport: vp,
+	}
 }
 
 // Update handles messages for the notes panel.
 func (n *NotesPanel) Update(msg tea.Msg) tea.Cmd {
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		key := msg.String()
-		switch key {
-		case "j", "down":
-			n.offset++
-			n.clampOffset()
-		case "k", "up":
-			n.offset--
-			if n.offset < 0 {
-				n.offset = 0
-			}
-		case "g":
-			n.offset = 0
-		case "G":
-			n.scrollToBottom()
-		}
-	}
-	return nil
+	var cmd tea.Cmd
+	n.viewport, cmd = n.viewport.Update(msg)
+	return cmd
 }
 
 // Render returns the notes panel view as a string.
 func (n *NotesPanel) Render() string {
-	if n.state == nil || len(n.state.Notes) == 0 {
-		return styleEmptyState.Render("No notes recorded yet")
-	}
-
-	// Group notes by type
-	notesByType := make(map[string][]*session.Note)
-	for _, note := range n.state.Notes {
-		notesByType[note.Type] = append(notesByType[note.Type], note)
-	}
-
-	var sections []string
-
-	// Render notes by type in consistent order
-	types := []string{"learning", "decision", "tip", "stuck"}
-	for _, noteType := range types {
-		notes := notesByType[noteType]
-		if len(notes) == 0 {
-			continue
-		}
-
-		// Render type header with color-coding
-		header := n.renderTypeHeader(noteType, len(notes))
-		sections = append(sections, header)
-
-		// Render individual notes
-		for _, note := range notes {
-			noteStr := n.renderNote(note)
-			sections = append(sections, noteStr)
-		}
-
-		// Add spacing between type groups
-		sections = append(sections, "")
-	}
-
-	// Join all sections
-	content := strings.Join(sections, "\n")
-
-	// Handle scrolling if content exceeds available height
-	lines := strings.Split(content, "\n")
-	if len(lines) > n.height-2 {
-		start := n.offset
-		end := min(start+n.height-2, len(lines))
-		lines = lines[start:end]
-
-		// Add scroll indicator
-		scrollInfo := fmt.Sprintf(" [%d-%d of %d] ", start+1, end, len(strings.Split(content, "\n")))
-		lines = append(lines, styleDim.Render(scrollInfo))
-	}
-
-	return strings.Join(lines, "\n")
+	return n.viewport.View()
 }
 
 // renderTypeHeader renders a color-coded header for a note type.
@@ -177,73 +117,60 @@ func (n *NotesPanel) renderNote(note *session.Note) string {
 	return styleNoteContent.Render(noteStr)
 }
 
-// scrollToBottom scrolls to the bottom of the notes.
-func (n *NotesPanel) scrollToBottom() {
-	if n.state == nil {
-		return
-	}
-
-	// Count total lines (headers + notes + spacing)
-	notesByType := make(map[string][]*session.Note)
-	for _, note := range n.state.Notes {
-		notesByType[note.Type] = append(notesByType[note.Type], note)
-	}
-
-	totalLines := 0
-	types := []string{"learning", "decision", "tip", "stuck"}
-	for _, noteType := range types {
-		notes := notesByType[noteType]
-		if len(notes) > 0 {
-			totalLines++ // header
-			totalLines += len(notes)
-			totalLines++ // spacing
-		}
-	}
-
-	n.offset = max(0, totalLines-n.height+2)
-}
-
-// clampOffset ensures the offset doesn't exceed content bounds.
-func (n *NotesPanel) clampOffset() {
-	if n.state == nil {
-		n.offset = 0
-		return
-	}
-
-	// Count total lines
-	notesByType := make(map[string][]*session.Note)
-	for _, note := range n.state.Notes {
-		notesByType[note.Type] = append(notesByType[note.Type], note)
-	}
-
-	totalLines := 0
-	types := []string{"learning", "decision", "tip", "stuck"}
-	for _, noteType := range types {
-		notes := notesByType[noteType]
-		if len(notes) > 0 {
-			totalLines++ // header
-			totalLines += len(notes)
-			totalLines++ // spacing
-		}
-	}
-
-	maxOffset := max(0, totalLines-n.height+2)
-	if n.offset > maxOffset {
-		n.offset = maxOffset
-	}
-}
-
 // UpdateSize updates the notes panel dimensions.
 func (n *NotesPanel) UpdateSize(width, height int) tea.Cmd {
 	n.width = width
 	n.height = height
-	n.clampOffset()
+	n.viewport.SetWidth(width - 2) // Account for border
+	n.viewport.SetHeight(height - 2)
 	return nil
 }
 
 // UpdateState updates the notes panel with new session state.
 func (n *NotesPanel) UpdateState(state *session.State) tea.Cmd {
 	n.state = state
-	n.clampOffset()
+	n.updateContent()
 	return nil
+}
+
+// updateContent rebuilds the viewport content from current notes.
+func (n *NotesPanel) updateContent() {
+	if n.state == nil || len(n.state.Notes) == 0 {
+		n.viewport.SetContent(styleEmptyState.Render("No notes recorded yet"))
+		return
+	}
+
+	// Group notes by type
+	notesByType := make(map[string][]*session.Note)
+	for _, note := range n.state.Notes {
+		notesByType[note.Type] = append(notesByType[note.Type], note)
+	}
+
+	var sections []string
+
+	// Render notes by type in consistent order
+	types := []string{"learning", "decision", "tip", "stuck"}
+	for _, noteType := range types {
+		notes := notesByType[noteType]
+		if len(notes) == 0 {
+			continue
+		}
+
+		// Render type header with color-coding
+		header := n.renderTypeHeader(noteType, len(notes))
+		sections = append(sections, header)
+
+		// Render individual notes
+		for _, note := range notes {
+			noteStr := n.renderNote(note)
+			sections = append(sections, noteStr)
+		}
+
+		// Add spacing between type groups
+		sections = append(sections, "")
+	}
+
+	// Join all sections and set viewport content
+	content := strings.Join(sections, "\n")
+	n.viewport.SetContent(content)
 }
