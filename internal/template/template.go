@@ -337,3 +337,34 @@ func formatTimeAgo(d time.Duration) string {
 		return fmt.Sprintf("%d days ago", days)
 	}
 }
+
+// countReadyTasks returns the number of tasks that are ready to work on.
+// A task is ready if its status is "remaining" and all of its dependencies are completed.
+func countReadyTasks(state *session.State) int {
+	count := 0
+	for _, task := range state.Tasks {
+		if task.Status != "remaining" {
+			continue
+		}
+
+		// Check if all dependencies are resolved (completed)
+		allDepsCompleted := true
+		for _, depID := range task.DependsOn {
+			if depTask, exists := state.Tasks[depID]; exists {
+				if depTask.Status != "completed" {
+					allDepsCompleted = false
+					break
+				}
+			} else {
+				// Dependency doesn't exist - treat as unresolved
+				allDepsCompleted = false
+				break
+			}
+		}
+
+		if allDepsCompleted {
+			count++
+		}
+	}
+	return count
+}

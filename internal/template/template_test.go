@@ -527,6 +527,130 @@ func TestFormatTimeAgo(t *testing.T) {
 	}
 }
 
+func TestCountReadyTasks(t *testing.T) {
+	tests := []struct {
+		name  string
+		state *session.State
+		want  int
+	}{
+		{
+			name: "no tasks",
+			state: &session.State{
+				Tasks: map[string]*session.Task{},
+			},
+			want: 0,
+		},
+		{
+			name: "all remaining with no dependencies",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Task 1", Status: "remaining", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Task 2", Status: "remaining", DependsOn: []string{}},
+					"task3": {ID: "task3", Content: "Task 3", Status: "remaining", DependsOn: []string{}},
+				},
+			},
+			want: 3,
+		},
+		{
+			name: "mixed statuses - only remaining counted",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Task 1", Status: "remaining", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Task 2", Status: "in_progress", DependsOn: []string{}},
+					"task3": {ID: "task3", Content: "Task 3", Status: "completed", DependsOn: []string{}},
+					"task4": {ID: "task4", Content: "Task 4", Status: "blocked", DependsOn: []string{}},
+					"task5": {ID: "task5", Content: "Task 5", Status: "remaining", DependsOn: []string{}},
+				},
+			},
+			want: 2,
+		},
+		{
+			name: "task with completed dependency - is ready",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base task", Status: "completed", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Dependent task", Status: "remaining", DependsOn: []string{"task1"}},
+				},
+			},
+			want: 1,
+		},
+		{
+			name: "task with incomplete dependency - not ready",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base task", Status: "remaining", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Dependent task", Status: "remaining", DependsOn: []string{"task1"}},
+				},
+			},
+			want: 1, // Only task1 is ready
+		},
+		{
+			name: "task with in_progress dependency - not ready",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base task", Status: "in_progress", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Dependent task", Status: "remaining", DependsOn: []string{"task1"}},
+				},
+			},
+			want: 0, // task1 is in_progress, task2 is blocked by incomplete dependency
+		},
+		{
+			name: "task with multiple dependencies - all completed",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base 1", Status: "completed", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Base 2", Status: "completed", DependsOn: []string{}},
+					"task3": {ID: "task3", Content: "Dependent", Status: "remaining", DependsOn: []string{"task1", "task2"}},
+				},
+			},
+			want: 1,
+		},
+		{
+			name: "task with multiple dependencies - some incomplete",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base 1", Status: "completed", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Base 2", Status: "remaining", DependsOn: []string{}},
+					"task3": {ID: "task3", Content: "Dependent", Status: "remaining", DependsOn: []string{"task1", "task2"}},
+				},
+			},
+			want: 1, // Only task2 is ready, task3 is blocked
+		},
+		{
+			name: "task with non-existent dependency - not ready",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Dependent", Status: "remaining", DependsOn: []string{"nonexistent"}},
+				},
+			},
+			want: 0,
+		},
+		{
+			name: "complex scenario",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Done", Status: "completed", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Ready 1", Status: "remaining", DependsOn: []string{}},
+					"task3": {ID: "task3", Content: "Ready 2", Status: "remaining", DependsOn: []string{"task1"}},
+					"task4": {ID: "task4", Content: "Blocked", Status: "remaining", DependsOn: []string{"task2"}},
+					"task5": {ID: "task5", Content: "Working", Status: "in_progress", DependsOn: []string{}},
+					"task6": {ID: "task6", Content: "Completed", Status: "completed", DependsOn: []string{}},
+				},
+			},
+			want: 2, // task2 and task3 are ready
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := countReadyTasks(tt.state)
+			if got != tt.want {
+				t.Errorf("countReadyTasks() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildPrompt(t *testing.T) {
 	// This is an integration test - requires actual NATS setup
 	// For now, test the formatting functions independently above
