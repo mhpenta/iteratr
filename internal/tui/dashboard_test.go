@@ -17,6 +17,7 @@ func TestDashboard_Render(t *testing.T) {
 			dashboard: &Dashboard{
 				sessionName: "test-session",
 				iteration:   5,
+				sidebar:     NewSidebar(),
 			},
 			wantEmpty: false,
 		},
@@ -35,6 +36,7 @@ func TestDashboard_Render(t *testing.T) {
 						},
 					},
 				},
+				sidebar: NewSidebar(),
 			},
 			wantEmpty: false,
 		},
@@ -43,6 +45,7 @@ func TestDashboard_Render(t *testing.T) {
 			dashboard: &Dashboard{
 				sessionName: "test-session",
 				iteration:   1,
+				sidebar:     NewSidebar(),
 			},
 			wantEmpty: false,
 		},
@@ -65,6 +68,7 @@ func TestDashboard_RenderSessionInfo(t *testing.T) {
 	d := &Dashboard{
 		sessionName: "my-session",
 		iteration:   42,
+		sidebar:     NewSidebar(),
 	}
 
 	output := d.renderSessionInfo()
@@ -82,7 +86,7 @@ func TestDashboard_GetTaskStats(t *testing.T) {
 		name     string
 		state    *session.State
 		wantZero bool
-		expected taskStats
+		expected progressStats
 	}{
 		{
 			name: "counts tasks correctly",
@@ -95,7 +99,7 @@ func TestDashboard_GetTaskStats(t *testing.T) {
 					"t5": {ID: "t5", Status: "completed"},
 				},
 			},
-			expected: taskStats{
+			expected: progressStats{
 				Total:      5,
 				Remaining:  1,
 				InProgress: 1,
@@ -107,7 +111,7 @@ func TestDashboard_GetTaskStats(t *testing.T) {
 			name:     "handles empty task list",
 			state:    &session.State{Tasks: map[string]*session.Task{}},
 			wantZero: true,
-			expected: taskStats{
+			expected: progressStats{
 				Total:      0,
 				Remaining:  0,
 				InProgress: 0,
@@ -123,7 +127,7 @@ func TestDashboard_GetTaskStats(t *testing.T) {
 					"t2": {ID: "t2", Status: "completed"},
 				},
 			},
-			expected: taskStats{
+			expected: progressStats{
 				Total:      2,
 				Remaining:  0,
 				InProgress: 0,
@@ -199,54 +203,8 @@ func TestDashboard_RenderProgressIndicator(t *testing.T) {
 	}
 }
 
-func TestDashboard_RenderCurrentTask(t *testing.T) {
-	tests := []struct {
-		name      string
-		state     *session.State
-		wantEmpty bool
-	}{
-		{
-			name: "renders current in_progress task",
-			state: &session.State{
-				Tasks: map[string]*session.Task{
-					"t1": {
-						ID:      "abcdef1234567890",
-						Content: "Current task",
-						Status:  "in_progress",
-					},
-				},
-			},
-			wantEmpty: false,
-		},
-		{
-			name: "returns empty when no in_progress task",
-			state: &session.State{
-				Tasks: map[string]*session.Task{
-					"t1": {ID: "t1", Content: "Task 1", Status: "completed"},
-				},
-			},
-			wantEmpty: true,
-		},
-		{
-			name:      "returns empty when no tasks",
-			state:     &session.State{Tasks: map[string]*session.Task{}},
-			wantEmpty: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			d := &Dashboard{state: tt.state}
-			output := d.renderCurrentTask()
-			if tt.wantEmpty && output != "" {
-				t.Errorf("expected empty output, got: %s", output)
-			}
-			if !tt.wantEmpty && output == "" {
-				t.Error("expected non-empty output, got empty string")
-			}
-		})
-	}
-}
+// TestDashboard_RenderCurrentTask removed - renderCurrentTask() method no longer exists
+// Current task is now shown in StatusBar component
 
 func TestDashboard_UpdateState(t *testing.T) {
 	d := NewDashboard(nil)
@@ -303,40 +261,5 @@ func TestNewDashboard(t *testing.T) {
 	}
 }
 
-func TestDashboard_RenderTaskStats(t *testing.T) {
-	tests := []struct {
-		name      string
-		state     *session.State
-		wantEmpty bool
-	}{
-		{
-			name: "renders stats with mixed tasks",
-			state: &session.State{
-				Tasks: map[string]*session.Task{
-					"t1": {ID: "t1", Status: "remaining"},
-					"t2": {ID: "t2", Status: "in_progress"},
-					"t3": {ID: "t3", Status: "completed"},
-				},
-			},
-			wantEmpty: false,
-		},
-		{
-			name:      "returns empty with no tasks",
-			state:     &session.State{Tasks: map[string]*session.Task{}},
-			wantEmpty: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			d := &Dashboard{state: tt.state}
-			output := d.renderTaskStats()
-			if tt.wantEmpty && output != "" {
-				t.Errorf("expected empty output, got: %s", output)
-			}
-			if !tt.wantEmpty && output == "" {
-				t.Error("expected non-empty output")
-			}
-		})
-	}
-}
+// TestDashboard_RenderTaskStats removed - renderTaskStats() method no longer exists
+// Task stats are shown in Sidebar component and renderProgressIndicator()

@@ -24,9 +24,6 @@ func TestNewApp(t *testing.T) {
 	if app.dashboard == nil {
 		t.Error("expected non-nil dashboard")
 	}
-	if app.tasks == nil {
-		t.Error("expected non-nil tasks")
-	}
 	if app.logs == nil {
 		t.Error("expected non-nil logs")
 	}
@@ -53,23 +50,18 @@ func TestApp_HandleKeyPress_ViewSwitching(t *testing.T) {
 			expectedView: ViewDashboard,
 		},
 		{
-			name:         "switch to tasks",
-			key:          "2",
-			expectedView: ViewTasks,
-		},
-		{
 			name:         "switch to logs",
-			key:          "3",
+			key:          "2",
 			expectedView: ViewLogs,
 		},
 		{
 			name:         "switch to notes",
-			key:          "4",
+			key:          "3",
 			expectedView: ViewNotes,
 		},
 		{
 			name:         "switch to inbox",
-			key:          "5",
+			key:          "4",
 			expectedView: ViewInbox,
 		},
 	}
@@ -108,28 +100,8 @@ func TestApp_HandleKeyPress_Quit(t *testing.T) {
 	}
 }
 
-func TestApp_RenderActiveView(t *testing.T) {
-	ctx := context.Background()
-	app := NewApp(ctx, nil, "test-session", nil)
-
-	views := []ViewType{
-		ViewDashboard,
-		ViewTasks,
-		ViewLogs,
-		ViewNotes,
-		ViewInbox,
-	}
-
-	for _, view := range views {
-		t.Run(string(rune(view)), func(t *testing.T) {
-			app.activeView = view
-			output := app.renderActiveView()
-			if output == "" {
-				t.Errorf("expected non-empty output for view %v", view)
-			}
-		})
-	}
-}
+// TestApp_RenderActiveView removed - renderActiveView() method was removed in Phase 12.4
+// View rendering now uses Draw pattern with Ultraviolet Screen buffer
 
 func TestApp_Update_WindowSize(t *testing.T) {
 	ctx := context.Background()
@@ -230,58 +202,19 @@ func TestApp_View_Quitting(t *testing.T) {
 	_ = view
 }
 
-func TestApp_RenderViewTabs(t *testing.T) {
-	ctx := context.Background()
-	app := NewApp(ctx, nil, "test-session", nil)
-	app.width = 100
+// TestApp_RenderViewTabs removed - renderViewTabs() method was removed in Phase 12.4
+// View navigation now handled by Footer component
 
-	// Test with different active views
-	views := []ViewType{
-		ViewDashboard,
-		ViewTasks,
-		ViewLogs,
-		ViewNotes,
-		ViewInbox,
-	}
+// TestApp_RenderHeader removed - renderHeader() method was removed in Phase 12.4
+// Header now handled by Header component with Draw pattern
 
-	for _, view := range views {
-		t.Run(string(rune(view)), func(t *testing.T) {
-			app.activeView = view
-			output := app.renderViewTabs()
-			if output == "" {
-				t.Error("expected non-empty view tabs")
-			}
-		})
-	}
-}
-
-func TestApp_RenderHeader(t *testing.T) {
-	ctx := context.Background()
-	app := NewApp(ctx, nil, "test-session", nil)
-	app.width = 100
-
-	output := app.renderHeader()
-	if output == "" {
-		t.Error("expected non-empty header")
-	}
-}
-
-func TestApp_RenderFooter(t *testing.T) {
-	ctx := context.Background()
-	app := NewApp(ctx, nil, "test-session", nil)
-	app.width = 100
-
-	output := app.renderFooter()
-	if output == "" {
-		t.Error("expected non-empty footer")
-	}
-}
+// TestApp_RenderFooter removed - renderFooter() method was removed in Phase 12.4
+// Footer now handled by Footer component with Draw pattern
 
 func TestViewType_Constants(t *testing.T) {
 	// Verify view type constants are distinct
 	views := []ViewType{
 		ViewDashboard,
-		ViewTasks,
 		ViewLogs,
 		ViewNotes,
 		ViewInbox,
@@ -295,7 +228,7 @@ func TestViewType_Constants(t *testing.T) {
 		seen[view] = true
 	}
 
-	if len(seen) != 5 {
-		t.Errorf("expected 5 distinct view types, got %d", len(seen))
+	if len(seen) != 4 {
+		t.Errorf("expected 4 distinct view types, got %d", len(seen))
 	}
 }
