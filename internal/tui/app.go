@@ -17,7 +17,6 @@ type ViewType int
 
 const (
 	ViewDashboard ViewType = iota
-	ViewTasks
 	ViewLogs
 	ViewNotes
 	ViewInbox
@@ -28,7 +27,6 @@ const (
 type App struct {
 	// View components
 	dashboard *Dashboard
-	tasks     *TaskList
 	logs      *LogViewer
 	notes     *NotesPanel
 	inbox     *InboxPanel
@@ -56,7 +54,6 @@ func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *n
 		ctx:         ctx,
 		activeView:  ViewDashboard,
 		dashboard:   NewDashboard(agent), // Pass agent output to dashboard
-		tasks:       NewTaskList(),
 		logs:        NewLogViewer(),
 		notes:       NewNotesPanel(),
 		inbox:       NewInboxPanel(),
@@ -85,19 +82,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-		// Calculate content height (minus header and footer, each ~1 line with padding)
-		contentHeight := msg.Height - 4 // header(1) + footer(1) + padding(2)
+		// Calculate content height (minus header, status bar, and footer)
+		contentHeight := msg.Height - 5 // header(1) + statusbar(1) + footer(1) + padding(2)
 		if contentHeight < 5 {
 			contentHeight = 5
 		}
 		// Propagate size to all views
+		// Note: agent output is sized by dashboard (it owns the agent component)
 		return a, tea.Batch(
 			a.dashboard.UpdateSize(msg.Width, contentHeight),
-			a.tasks.UpdateSize(msg.Width, contentHeight),
 			a.logs.UpdateSize(msg.Width, contentHeight),
 			a.notes.UpdateSize(msg.Width, contentHeight),
 			a.inbox.UpdateSize(msg.Width, contentHeight),
-			a.agent.UpdateSize(msg.Width, contentHeight),
 		)
 
 	case AgentOutputMsg:
@@ -116,7 +112,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Propagate state updates to all views
 		return a, tea.Batch(
 			a.dashboard.UpdateState(msg.State),
-			a.tasks.UpdateState(msg.State),
 			a.logs.UpdateState(msg.State),
 			a.notes.UpdateState(msg.State),
 			a.inbox.UpdateState(msg.State),
@@ -136,8 +131,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch a.activeView {
 	case ViewDashboard:
 		cmd = a.dashboard.Update(msg)
-	case ViewTasks:
-		cmd = a.tasks.Update(msg)
 	case ViewLogs:
 		cmd = a.logs.Update(msg)
 	case ViewNotes:
@@ -159,15 +152,12 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.activeView = ViewDashboard
 		return a, nil
 	case "2":
-		a.activeView = ViewTasks
-		return a, nil
-	case "3":
 		a.activeView = ViewLogs
 		return a, nil
-	case "4":
+	case "3":
 		a.activeView = ViewNotes
 		return a, nil
-	case "5":
+	case "4":
 		a.activeView = ViewInbox
 		return a, nil
 	case "q", "ctrl+c":
@@ -180,8 +170,6 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch a.activeView {
 	case ViewDashboard:
 		cmd = a.dashboard.Update(msg)
-	case ViewTasks:
-		cmd = a.tasks.Update(msg)
 	case ViewLogs:
 		cmd = a.logs.Update(msg)
 	case ViewNotes:
@@ -201,13 +189,14 @@ func (a *App) View() tea.View {
 		return v
 	}
 
-	// Render header, content, and footer
+	// Render header, content, status bar, and footer
 	header := a.renderHeader()
 	content := a.renderActiveView()
+	statusBar := a.renderStatusBar()
 	footer := a.renderFooter()
 
 	// Join vertically with lipgloss
-	output := header + "\n" + content + "\n" + footer
+	output := header + "\n" + content + "\n" + statusBar + "\n" + footer
 
 	// Create view with display options
 	v := tea.NewView(output)
@@ -215,6 +204,40 @@ func (a *App) View() tea.View {
 	v.MouseMode = tea.MouseModeCellMotion // Enable mouse events
 	v.ReportFocus = true                  // Enable focus events
 	return v
+}
+
+// renderStatusBar renders the task status bar above the footer.
+func (a *App) renderStatusBar() string {
+	if a.dashboard == nil || a.dashboard.state == nil {
+		return styleStatusBar.Width(a.width).Render("")
+	}
+
+	// Get task stats from dashboard
+	stats := a.dashboard.getTaskStats()
+
+	var parts []string
+
+	if stats.Remaining > 0 {
+		parts = append(parts, styleStatusRemaining.Render(fmt.Sprintf("%d remaining", stats.Remaining)))
+	}
+	if stats.InProgress > 0 {
+		parts = append(parts, styleStatusInProgress.Render(fmt.Sprintf("%d in progress", stats.InProgress)))
+	}
+	if stats.Completed > 0 {
+		parts = append(parts, styleStatusCompleted.Render(fmt.Sprintf("%d completed", stats.Completed)))
+	}
+	if stats.Blocked > 0 {
+		parts = append(parts, styleStatusBlocked.Render(fmt.Sprintf("%d blocked", stats.Blocked)))
+	}
+
+	if len(parts) == 0 {
+		return styleStatusBar.Width(a.width).Render(styleDim.Render("No tasks"))
+	}
+
+	separator := styleDim.Render(" | ")
+	statusText := strings.Join(parts, separator)
+
+	return styleStatusBar.Width(a.width).Render(statusText)
 }
 
 // renderHeader renders the top header bar with session info and navigation.
@@ -260,8 +283,6 @@ func (a *App) renderActiveView() string {
 	switch a.activeView {
 	case ViewDashboard:
 		return a.dashboard.Render()
-	case ViewTasks:
-		return a.tasks.Render()
 	case ViewLogs:
 		return a.logs.Render()
 	case ViewNotes:
@@ -281,10 +302,9 @@ func (a *App) renderViewTabs() string {
 		view ViewType
 	}{
 		{"1", "Dashboard", ViewDashboard},
-		{"2", "Tasks", ViewTasks},
-		{"3", "Logs", ViewLogs},
-		{"4", "Notes", ViewNotes},
-		{"5", "Inbox", ViewInbox},
+		{"2", "Logs", ViewLogs},
+		{"3", "Notes", ViewNotes},
+		{"4", "Inbox", ViewInbox},
 	}
 
 	var tabs []string
@@ -313,10 +333,9 @@ func (a *App) renderFooter() string {
 		view ViewType
 	}{
 		{"1", "Dashboard", ViewDashboard},
-		{"2", "Tasks", ViewTasks},
-		{"3", "Logs", ViewLogs},
-		{"4", "Notes", ViewNotes},
-		{"5", "Inbox", ViewInbox},
+		{"2", "Logs", ViewLogs},
+		{"3", "Notes", ViewNotes},
+		{"4", "Inbox", ViewInbox},
 	}
 
 	for _, v := range views {
@@ -328,6 +347,10 @@ func (a *App) renderFooter() string {
 		}
 		parts = append(parts, key+" "+label)
 	}
+
+	// Add tab hint for sidebar focus
+	tabHint := styleFooterKey.Render("tab") + styleFooterLabel.Render("=tasks")
+	parts = append(parts, tabHint)
 
 	// Add quit hint on the right
 	footer := strings.Join(parts, "  ")

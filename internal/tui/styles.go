@@ -60,6 +60,13 @@ var (
 				Foreground(colorPrimary).
 				Bold(true)
 
+	// Status bar style (task stats above footer)
+	styleStatusBar = lipgloss.NewStyle().
+			Foreground(colorText).
+			Background(colorBgHeader).
+			Padding(0, 1).
+			Align(lipgloss.Right)
+
 	// View status indicators
 	styleStatusRemaining  = lipgloss.NewStyle().Foreground(colorMuted)
 	styleStatusInProgress = lipgloss.NewStyle().Foreground(colorWarning)

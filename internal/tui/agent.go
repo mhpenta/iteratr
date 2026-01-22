@@ -163,7 +163,7 @@ func (a *AgentOutput) refreshContent() {
 	for _, msg := range a.messages {
 		block := a.renderMessage(msg, contentWidth)
 		rendered.WriteString(block)
-		rendered.WriteString("\n") // blank line after each message
+		rendered.WriteString("\n")
 	}
 
 	a.viewport.SetContent(rendered.String())
@@ -191,6 +191,7 @@ func (a *AgentOutput) renderTextMessage(msg AgentMessage, width int) string {
 		Border(lipgloss.ThickBorder(), false, false, false, true).
 		BorderForeground(colorPrimary).
 		PaddingLeft(1).
+		MarginBottom(1).
 		Width(width)
 
 	// Word wrap the content
@@ -204,6 +205,7 @@ func (a *AgentOutput) renderToolMessage(msg AgentMessage, width int) string {
 		Border(lipgloss.ThickBorder(), false, false, false, true).
 		BorderForeground(colorSecondary).
 		PaddingLeft(1).
+		MarginBottom(1).
 		Width(width)
 
 	// Tool header
@@ -239,7 +241,9 @@ func (a *AgentOutput) renderDivider(msg AgentMessage, width int) string {
 	// Style the divider
 	style := lipgloss.NewStyle().
 		Foreground(colorMuted).
-		Bold(true)
+		Bold(true).
+		MarginTop(1).
+		MarginBottom(1)
 
 	return style.Render(divider)
 }
