@@ -249,7 +249,7 @@ func TestDashboard_RenderCurrentTask(t *testing.T) {
 }
 
 func TestDashboard_UpdateState(t *testing.T) {
-	d := NewDashboard()
+	d := NewDashboard(nil)
 
 	state := &session.State{
 		Session: "new-session",
@@ -267,7 +267,7 @@ func TestDashboard_UpdateState(t *testing.T) {
 }
 
 func TestDashboard_SetIteration(t *testing.T) {
-	d := NewDashboard()
+	d := NewDashboard(nil)
 
 	d.SetIteration(10)
 
@@ -277,7 +277,7 @@ func TestDashboard_SetIteration(t *testing.T) {
 }
 
 func TestDashboard_UpdateSize(t *testing.T) {
-	d := NewDashboard()
+	d := NewDashboard(nil)
 
 	d.UpdateSize(100, 50)
 
@@ -290,7 +290,7 @@ func TestDashboard_UpdateSize(t *testing.T) {
 }
 
 func TestNewDashboard(t *testing.T) {
-	d := NewDashboard()
+	d := NewDashboard(nil)
 
 	if d == nil {
 		t.Fatal("expected non-nil dashboard")
