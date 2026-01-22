@@ -335,7 +335,7 @@ func (s *Sidebar) renderNote(note *session.Note) string {
 }
 
 // Render provides legacy string-based rendering for backward compatibility.
-// This method will be removed once App is refactored to use Screen/Draw pattern.
+// This method will be removed in Phase 12 once App is refactored to use Screen/Draw pattern.
 func (s *Sidebar) Render() string {
 	// Guard against zero dimensions
 	if s.width < 10 || s.height < 5 {
@@ -377,7 +377,7 @@ func (s *Sidebar) UpdateState(state *session.State) tea.Cmd { s.SetState(state);
 // Compile-time interface check
 var _ FocusableComponent = (*Sidebar)(nil)
 
-// Sidebar styles
+// Sidebar styles (used by legacy Render method, will be removed in Phase 12)
 var (
 	styleSidebarBorder = lipgloss.NewStyle().
 				Border(lipgloss.NormalBorder(), true, true, true, false). // No left border
