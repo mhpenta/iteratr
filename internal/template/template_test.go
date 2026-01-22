@@ -388,6 +388,111 @@ func TestFormatTasks(t *testing.T) {
 	}
 }
 
+func TestFormatIterationHistory(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name  string
+		state *session.State
+		want  []string // Strings that should be present
+	}{
+		{
+			name: "no iterations",
+			state: &session.State{
+				Iterations: []*session.Iteration{},
+			},
+			want: []string{"No iteration history yet"},
+		},
+		{
+			name: "no summaries",
+			state: &session.State{
+				Iterations: []*session.Iteration{
+					{Number: 1, StartedAt: now.Add(-1 * time.Hour), EndedAt: now.Add(-50 * time.Minute), Complete: true, Summary: ""},
+				},
+			},
+			want: []string{"No iteration summaries recorded yet"},
+		},
+		{
+			name: "one iteration with summary",
+			state: &session.State{
+				Iterations: []*session.Iteration{
+					{Number: 1, StartedAt: now.Add(-1 * time.Hour), EndedAt: now.Add(-30 * time.Minute), Complete: true, Summary: "Added auth middleware"},
+				},
+			},
+			want: []string{"- #1 (30min ago): Added auth middleware"},
+		},
+		{
+			name: "multiple iterations with summaries - shows last 5",
+			state: &session.State{
+				Iterations: []*session.Iteration{
+					{Number: 1, StartedAt: now.Add(-10 * time.Hour), EndedAt: now.Add(-9 * time.Hour), Complete: true, Summary: "Setup project"},
+					{Number: 2, StartedAt: now.Add(-8 * time.Hour), EndedAt: now.Add(-7 * time.Hour), Complete: true, Summary: "Added database models"},
+					{Number: 3, StartedAt: now.Add(-6 * time.Hour), EndedAt: now.Add(-5 * time.Hour), Complete: true, Summary: "Implemented API routes"},
+					{Number: 4, StartedAt: now.Add(-4 * time.Hour), EndedAt: now.Add(-3 * time.Hour), Complete: true, Summary: "Added validation"},
+					{Number: 5, StartedAt: now.Add(-2 * time.Hour), EndedAt: now.Add(-1 * time.Hour), Complete: true, Summary: "Fixed auth bug"},
+					{Number: 6, StartedAt: now.Add(-30 * time.Minute), EndedAt: now.Add(-15 * time.Minute), Complete: true, Summary: "Added tests"},
+				},
+			},
+			want: []string{
+				"- #2 (7hr ago): Added database models",
+				"- #3 (5hr ago): Implemented API routes",
+				"- #4 (3hr ago): Added validation",
+				"- #5 (1hr ago): Fixed auth bug",
+				"- #6 (15min ago): Added tests",
+			},
+		},
+		{
+			name: "iterations with and without summaries",
+			state: &session.State{
+				Iterations: []*session.Iteration{
+					{Number: 1, StartedAt: now.Add(-2 * time.Hour), EndedAt: now.Add(-90 * time.Minute), Complete: true, Summary: ""},
+					{Number: 2, StartedAt: now.Add(-1 * time.Hour), EndedAt: now.Add(-30 * time.Minute), Complete: true, Summary: "Completed feature X"},
+					{Number: 3, StartedAt: now.Add(-20 * time.Minute), EndedAt: now.Add(-10 * time.Minute), Complete: true, Summary: "Fixed bug Y"},
+				},
+			},
+			want: []string{
+				"- #2 (30min ago): Completed feature X",
+				"- #3 (10min ago): Fixed bug Y",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatIterationHistory(tt.state)
+			for _, expected := range tt.want {
+				if !strings.Contains(got, expected) {
+					t.Errorf("formatIterationHistory() = %q, want to contain %q", got, expected)
+				}
+			}
+		})
+	}
+}
+
+func TestFormatTimeAgo(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		want     string
+	}{
+		{"just now", 30 * time.Second, "just now"},
+		{"one minute", 1 * time.Minute, "1min ago"},
+		{"multiple minutes", 15 * time.Minute, "15min ago"},
+		{"one hour", 1 * time.Hour, "1hr ago"},
+		{"multiple hours", 5 * time.Hour, "5hr ago"},
+		{"one day", 24 * time.Hour, "1 day ago"},
+		{"multiple days", 3 * 24 * time.Hour, "3 days ago"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatTimeAgo(tt.duration)
+			if got != tt.want {
+				t.Errorf("formatTimeAgo(%v) = %q, want %q", tt.duration, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildPrompt(t *testing.T) {
 	// This is an integration test - requires actual NATS setup
 	// For now, test the formatting functions independently above

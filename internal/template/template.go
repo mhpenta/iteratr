@@ -249,3 +249,67 @@ func formatTasks(state *session.State) string {
 
 	return sb.String()
 }
+
+// formatIterationHistory formats recent iteration summaries for template injection.
+// Shows the last 5 completed iterations with their summaries and tasks worked.
+func formatIterationHistory(state *session.State) string {
+	if len(state.Iterations) == 0 {
+		return "No iteration history yet"
+	}
+
+	// Filter to iterations with summaries
+	withSummaries := []*session.Iteration{}
+	for _, iter := range state.Iterations {
+		if iter.Summary != "" {
+			withSummaries = append(withSummaries, iter)
+		}
+	}
+
+	if len(withSummaries) == 0 {
+		return "No iteration summaries recorded yet"
+	}
+
+	// Take the last 5 iterations (most recent)
+	start := 0
+	if len(withSummaries) > 5 {
+		start = len(withSummaries) - 5
+	}
+	recent := withSummaries[start:]
+
+	var sb strings.Builder
+	for _, iter := range recent {
+		// Calculate time ago
+		elapsed := time.Since(iter.EndedAt)
+		timeAgo := formatTimeAgo(elapsed)
+
+		// Format: "- #N (time ago): Summary"
+		sb.WriteString(fmt.Sprintf("- #%d (%s): %s\n", iter.Number, timeAgo, iter.Summary))
+	}
+
+	return sb.String()
+}
+
+// formatTimeAgo formats a duration into a human-readable "time ago" string.
+func formatTimeAgo(d time.Duration) string {
+	if d < time.Minute {
+		return "just now"
+	} else if d < time.Hour {
+		mins := int(d.Minutes())
+		if mins == 1 {
+			return "1min ago"
+		}
+		return fmt.Sprintf("%dmin ago", mins)
+	} else if d < 24*time.Hour {
+		hours := int(d.Hours())
+		if hours == 1 {
+			return "1hr ago"
+		}
+		return fmt.Sprintf("%dhr ago", hours)
+	} else {
+		days := int(d.Hours() / 24)
+		if days == 1 {
+			return "1 day ago"
+		}
+		return fmt.Sprintf("%d days ago", days)
+	}
+}
