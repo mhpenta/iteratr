@@ -10,7 +10,7 @@ import (
 )
 
 // Compile-time interface checks
-var _ Component = (*Dashboard)(nil)
+var _ FocusableComponent = (*Dashboard)(nil)
 
 // FocusArea represents which part of the dashboard has keyboard focus.
 type FocusArea int
@@ -33,6 +33,7 @@ type Dashboard struct {
 	agentOutput *AgentOutput // Reference to agent output for rendering
 	sidebar     *TaskSidebar // Task sidebar on the right
 	focus       FocusArea    // Which area has keyboard focus
+	focused     bool         // Whether the dashboard has focus
 }
 
 // NewDashboard creates a new Dashboard component.
@@ -164,10 +165,21 @@ func (d *Dashboard) renderSessionInfo() string {
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
-// UpdateSize updates the dashboard dimensions.
-func (d *Dashboard) UpdateSize(width, height int) tea.Cmd {
+// SetSize updates the dashboard dimensions (implements Sizable interface).
+func (d *Dashboard) SetSize(width, height int) {
 	d.width = width
 	d.height = height
+
+	// Update agent output viewport size
+	if d.agentOutput != nil {
+		// Account for border (2 chars each side)
+		d.agentOutput.UpdateSize(width-2, height-2)
+	}
+}
+
+// UpdateSize updates the dashboard dimensions (legacy method for backward compatibility).
+func (d *Dashboard) UpdateSize(width, height int) tea.Cmd {
+	d.SetSize(width, height)
 
 	// Calculate widths
 	sidebarWidth := SidebarWidth
@@ -179,15 +191,6 @@ func (d *Dashboard) UpdateSize(width, height int) tea.Cmd {
 	// Update sidebar size
 	d.sidebar.UpdateSize(sidebarWidth, height)
 
-	// Update agent output viewport size
-	// Reserve space for: session info (2) + progress (2) + current task (3) + agent label (2) + padding (3)
-	if d.agentOutput != nil {
-		agentHeight := height - 12
-		if agentHeight < 5 {
-			agentHeight = 5
-		}
-		d.agentOutput.UpdateSize(mainWidth-2, agentHeight) // -2 for padding
-	}
 	return nil
 }
 
@@ -197,16 +200,31 @@ func (d *Dashboard) SetIteration(n int) tea.Cmd {
 	return nil
 }
 
-// UpdateState updates the dashboard with new session state.
-func (d *Dashboard) UpdateState(state *session.State) tea.Cmd {
+// SetState updates the dashboard with new session state (implements Stateful interface).
+func (d *Dashboard) SetState(state *session.State) {
 	d.state = state
 	// Update session name from state
 	if state != nil {
 		d.sessionName = state.Session
 	}
+}
+
+// UpdateState updates the dashboard with new session state (legacy method for backward compatibility).
+func (d *Dashboard) UpdateState(state *session.State) tea.Cmd {
+	d.SetState(state)
 	// Update sidebar state
 	d.sidebar.UpdateState(state)
 	return nil
+}
+
+// SetFocus sets the focus state of the dashboard (implements Focusable interface).
+func (d *Dashboard) SetFocus(focused bool) {
+	d.focused = focused
+}
+
+// IsFocused returns whether the dashboard has focus (implements Focusable interface).
+func (d *Dashboard) IsFocused() bool {
+	return d.focused
 }
 
 // renderProgressIndicator renders a progress bar showing task completion.
