@@ -91,25 +91,6 @@ func (d *Dashboard) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	return nil
 }
 
-// Render returns the dashboard view as a string.
-func (d *Dashboard) Render() string {
-	// Calculate widths
-	sidebarWidth := SidebarWidth
-	mainWidth := d.width - sidebarWidth
-	if mainWidth < 40 {
-		mainWidth = 40
-	}
-
-	// Render main content area (left side)
-	mainContent := d.renderMainContent(mainWidth)
-
-	// Render sidebar (right side)
-	sidebarContent := d.sidebar.Render()
-
-	// Join horizontally
-	return lipgloss.JoinHorizontal(lipgloss.Top, mainContent, sidebarContent)
-}
-
 // renderMainContent renders the main content area (session info + agent output).
 func (d *Dashboard) renderMainContent(width int) string {
 	// Build header sections (fixed height)

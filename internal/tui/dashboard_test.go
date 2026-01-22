@@ -6,63 +6,8 @@ import (
 	"github.com/mark3labs/iteratr/internal/session"
 )
 
-func TestDashboard_Render(t *testing.T) {
-	tests := []struct {
-		name      string
-		dashboard *Dashboard
-		wantEmpty bool
-	}{
-		{
-			name: "renders with session name and iteration",
-			dashboard: &Dashboard{
-				sessionName: "test-session",
-				iteration:   5,
-				sidebar:     NewSidebar(),
-			},
-			wantEmpty: false,
-		},
-		{
-			name: "renders with state",
-			dashboard: &Dashboard{
-				sessionName: "test-session",
-				iteration:   3,
-				state: &session.State{
-					Session: "test-session",
-					Tasks: map[string]*session.Task{
-						"task1": {
-							ID:      "task1abc",
-							Content: "Test task",
-							Status:  "remaining",
-						},
-					},
-				},
-				sidebar: NewSidebar(),
-			},
-			wantEmpty: false,
-		},
-		{
-			name: "renders without state",
-			dashboard: &Dashboard{
-				sessionName: "test-session",
-				iteration:   1,
-				sidebar:     NewSidebar(),
-			},
-			wantEmpty: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			output := tt.dashboard.Render()
-			if tt.wantEmpty && output != "" {
-				t.Errorf("expected empty output, got: %s", output)
-			}
-			if !tt.wantEmpty && output == "" {
-				t.Error("expected non-empty output, got empty string")
-			}
-		})
-	}
-}
+// TestDashboard_Render removed - Dashboard now uses Draw() method with Screen/Draw pattern
+// Rendering is tested through integration tests in app_test.go
 
 func TestDashboard_RenderSessionInfo(t *testing.T) {
 	d := &Dashboard{
