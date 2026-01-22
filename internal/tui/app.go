@@ -414,8 +414,10 @@ func (a *App) propagateSizes() {
 	a.footer.SetSize(a.layout.Footer.Dx(), a.layout.Footer.Dy())
 	a.status.SetSize(a.layout.Status.Dx(), a.layout.Status.Dy())
 
-	// Propagate layout mode and active view to footer
+	// Propagate layout mode to header, footer, and status bar
+	a.header.SetLayoutMode(a.layout.Mode)
 	a.footer.SetLayoutMode(a.layout.Mode)
+	a.status.SetLayoutMode(a.layout.Mode)
 	a.footer.SetActiveView(a.activeView)
 
 	// Propagate sizes to main content components

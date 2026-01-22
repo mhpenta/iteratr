@@ -9,11 +9,12 @@ import (
 
 // StatusBar displays connection status and current task information.
 type StatusBar struct {
-	width     int
-	height    int
-	state     *session.State
-	connected bool
-	working   bool
+	width      int
+	height     int
+	state      *session.State
+	connected  bool
+	working    bool
+	layoutMode LayoutMode
 }
 
 // NewStatusBar creates a new StatusBar component.
@@ -31,14 +32,14 @@ func (s *StatusBar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		return nil
 	}
 
-	// Build status content
+	// Build status content based on layout mode
 	var content string
 
 	// Add working indicator
 	indicator := s.getWorkingIndicator()
 	content += indicator + " "
 
-	// Add connection status
+	// Add connection status (condensed in compact mode)
 	connStatus := s.getConnectionStatus()
 	content += connStatus
 
@@ -50,7 +51,7 @@ func (s *StatusBar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		}
 	}
 
-	// Truncate if too long
+	// Truncate if too long (more aggressive in compact mode)
 	maxWidth := area.Dx() - 2 // Account for padding
 	if lipgloss.Width(content) > maxWidth {
 		content = truncateString(content, maxWidth)
@@ -80,6 +81,11 @@ func (s *StatusBar) SetConnectionStatus(connected bool) {
 	s.connected = connected
 }
 
+// SetLayoutMode updates the layout mode (desktop/compact).
+func (s *StatusBar) SetLayoutMode(mode LayoutMode) {
+	s.layoutMode = mode
+}
+
 // Update handles messages (minimal for status bar).
 func (s *StatusBar) Update(msg tea.Msg) tea.Cmd {
 	return nil
@@ -97,6 +103,15 @@ func (s *StatusBar) getWorkingIndicator() string {
 // getConnectionStatus returns the connection status indicator.
 // ● = connected, ○ = disconnected
 func (s *StatusBar) getConnectionStatus() string {
+	if s.layoutMode == LayoutCompact {
+		// Compact mode: just show the dot
+		if s.connected {
+			return lipgloss.NewStyle().Foreground(colorSuccess).Render("●")
+		}
+		return lipgloss.NewStyle().Foreground(colorError).Render("○")
+	}
+
+	// Desktop mode: show full text
 	if s.connected {
 		return lipgloss.NewStyle().Foreground(colorSuccess).Render("●") + " connected"
 	}
@@ -112,10 +127,15 @@ func (s *StatusBar) getCurrentTask() string {
 	// Find first in_progress task
 	for _, task := range s.state.Tasks {
 		if task.Status == "in_progress" {
-			// Truncate task content if too long
+			// Truncate task content based on layout mode
 			content := task.Content
-			if len(content) > 50 {
-				content = content[:47] + "..."
+			maxLen := 50
+			if s.layoutMode == LayoutCompact {
+				maxLen = 30 // More aggressive truncation in compact mode
+			}
+
+			if len(content) > maxLen {
+				content = content[:maxLen-3] + "..."
 			}
 			return "task: " + content
 		}

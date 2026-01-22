@@ -13,6 +13,7 @@ type Header struct {
 	width       int
 	sessionName string
 	state       *session.State
+	layoutMode  LayoutMode
 }
 
 // NewHeader creates a new Header component.
@@ -29,31 +30,21 @@ func (h *Header) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		return nil
 	}
 
-	// Build left side: app title | session | iteration
-	title := styleHeaderTitle.Render("iteratr")
-	sep := styleHeaderSeparator.Render(" | ")
-	sessionInfo := styleHeaderInfo.Render(h.sessionName)
-
-	left := title + sep + sessionInfo
-
-	// Add iteration info if available
-	if h.state != nil && len(h.state.Iterations) > 0 {
-		// Find current (latest) iteration
-		currentIter := h.state.Iterations[len(h.state.Iterations)-1]
-		iterInfo := fmt.Sprintf("Iteration #%d", currentIter.Number)
-		left += sep + styleHeaderInfo.Render(iterInfo)
+	// Build content based on layout mode
+	var left, right string
+	if h.layoutMode == LayoutCompact {
+		left = h.buildCompactLeft()
+		right = h.buildCompactRight()
+	} else {
+		left = h.buildDesktopLeft()
+		right = h.buildDesktopRight()
 	}
 
-	// Build right side: connection status indicator
-	right := h.renderStatusIndicator()
-
 	// Calculate spacing to fill width
-	leftRendered := left
-	rightRendered := right
 	totalWidth := area.Dx()
 
 	// Combine left, spacing, and right
-	content := h.buildHeader(leftRendered, rightRendered, totalWidth)
+	content := h.buildHeader(left, right, totalWidth)
 
 	// Render to screen using DrawStyled helper
 	DrawStyled(scr, area, styleHeader, content)
@@ -82,11 +73,59 @@ func (h *Header) buildHeader(left, right string, totalWidth int) string {
 	return left + spacer + right
 }
 
-// renderStatusIndicator renders the connection/status indicator on the right.
-func (h *Header) renderStatusIndicator() string {
-	// For now, show a simple connected indicator
-	// In future iterations, this could reflect actual connection status
+// buildDesktopLeft builds the full left side for desktop mode.
+func (h *Header) buildDesktopLeft() string {
+	title := styleHeaderTitle.Render("iteratr")
+	sep := styleHeaderSeparator.Render(" | ")
+	sessionInfo := styleHeaderInfo.Render(h.sessionName)
+
+	left := title + sep + sessionInfo
+
+	// Add iteration info if available
+	if h.state != nil && len(h.state.Iterations) > 0 {
+		currentIter := h.state.Iterations[len(h.state.Iterations)-1]
+		iterInfo := fmt.Sprintf("Iteration #%d", currentIter.Number)
+		left += sep + styleHeaderInfo.Render(iterInfo)
+	}
+
+	return left
+}
+
+// buildDesktopRight builds the full right side for desktop mode.
+func (h *Header) buildDesktopRight() string {
+	// Show full "● connected" text
 	indicator := styleHeaderInfo.Render("● connected")
+	return indicator
+}
+
+// buildCompactLeft builds the condensed left side for compact mode.
+func (h *Header) buildCompactLeft() string {
+	title := styleHeaderTitle.Render("iteratr")
+	sep := styleHeaderSeparator.Render(" | ")
+
+	// Shorten session name if too long
+	sessionName := h.sessionName
+	if len(sessionName) > 15 {
+		sessionName = sessionName[:12] + "..."
+	}
+	sessionInfo := styleHeaderInfo.Render(sessionName)
+
+	left := title + sep + sessionInfo
+
+	// Add compact iteration info (just number)
+	if h.state != nil && len(h.state.Iterations) > 0 {
+		currentIter := h.state.Iterations[len(h.state.Iterations)-1]
+		iterInfo := fmt.Sprintf("#%d", currentIter.Number)
+		left += sep + styleHeaderInfo.Render(iterInfo)
+	}
+
+	return left
+}
+
+// buildCompactRight builds the condensed right side for compact mode.
+func (h *Header) buildCompactRight() string {
+	// Show just the indicator dot, no text
+	indicator := styleHeaderInfo.Render("●")
 	return indicator
 }
 
@@ -98,6 +137,11 @@ func (h *Header) SetSize(width, height int) {
 // SetState updates the session state.
 func (h *Header) SetState(state *session.State) {
 	h.state = state
+}
+
+// SetLayoutMode updates the layout mode (desktop/compact).
+func (h *Header) SetLayoutMode(mode LayoutMode) {
+	h.layoutMode = mode
 }
 
 // Update handles messages. Header is mostly static, so this is minimal.
