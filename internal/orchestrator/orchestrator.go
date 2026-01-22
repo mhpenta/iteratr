@@ -9,7 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/mark3labs/iteratr/internal/acp"
+	"github.com/mark3labs/iteratr/internal/agent"
 	ierr "github.com/mark3labs/iteratr/internal/errors"
 	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/iteratr/internal/nats"
@@ -34,14 +34,14 @@ type Config struct {
 	Model             string // Model to use (e.g., anthropic/claude-sonnet-4-5)
 }
 
-// Orchestrator manages the iteration loop with embedded NATS, ACP client, and TUI.
+// Orchestrator manages the iteration loop with embedded NATS, agent runner, and TUI.
 type Orchestrator struct {
 	cfg        Config
 	ns         *natsserver.Server // Embedded NATS server
 	natsPort   int                // NATS server port
 	nc         *natsgo.Conn       // NATS connection
 	store      *session.Store     // Session store
-	acpClient  *acp.ACPClient     // ACP client for agent communication
+	runner     *agent.Runner      // Agent runner for opencode subprocess
 	tuiApp     *tui.App           // TUI application (nil if headless)
 	tuiProgram *tea.Program       // Bubbletea program
 	tuiDone    chan struct{}      // TUI completion signal
@@ -103,9 +103,17 @@ func (o *Orchestrator) Start() error {
 	}
 	logger.Debug("JetStream setup complete")
 
-	// 4. Create ACP client
-	logger.Debug("Creating ACP client")
-	o.acpClient = acp.NewACPClient(o.store, o.cfg.SessionName, o.cfg.WorkDir, "")
+	// 4. Create agent runner
+	logger.Debug("Creating agent runner")
+	o.runner = agent.NewRunner(agent.RunnerConfig{
+		Model:       o.cfg.Model,
+		WorkDir:     o.cfg.WorkDir,
+		SessionName: o.cfg.SessionName,
+		NATSPort:    o.natsPort,
+		OnText:      nil, // Set later based on headless mode
+		OnToolUse:   nil, // Not needed - tools called via CLI
+		OnError:     nil, // Errors returned from RunIteration
+	})
 
 	// 5. Start TUI if not headless
 	if !o.cfg.Headless {
@@ -212,16 +220,32 @@ func (o *Orchestrator) Run() error {
 		}
 		logger.Debug("Prompt built, length: %d characters", len(prompt))
 
-		// Setup callbacks for streaming output
+		// Setup output callback for runner
 		if o.tuiProgram != nil {
 			// Send to TUI
-			o.acpClient.SetOutputCallback(func(content string) {
-				o.tuiProgram.Send(tui.AgentOutputMsg{Content: content})
+			o.runner = agent.NewRunner(agent.RunnerConfig{
+				Model:       o.cfg.Model,
+				WorkDir:     o.cfg.WorkDir,
+				SessionName: o.cfg.SessionName,
+				NATSPort:    o.natsPort,
+				OnText: func(content string) {
+					o.tuiProgram.Send(tui.AgentOutputMsg{Content: content})
+				},
+				OnToolUse: nil, // Not needed - tools called via CLI
+				OnError:   nil, // Errors returned from RunIteration
 			})
 		} else {
 			// Print to stdout in headless mode
-			o.acpClient.SetOutputCallback(func(content string) {
-				fmt.Print(content)
+			o.runner = agent.NewRunner(agent.RunnerConfig{
+				Model:       o.cfg.Model,
+				WorkDir:     o.cfg.WorkDir,
+				SessionName: o.cfg.SessionName,
+				NATSPort:    o.natsPort,
+				OnText: func(content string) {
+					fmt.Print(content)
+				},
+				OnToolUse: nil, // Not needed - tools called via CLI
+				OnError:   nil, // Errors returned from RunIteration
 			})
 		}
 
@@ -229,7 +253,7 @@ func (o *Orchestrator) Run() error {
 		logger.Info("Running agent for iteration #%d", currentIteration)
 		fmt.Printf("Running iteration #%d...\n", currentIteration)
 		err = ierr.Recover(func() error {
-			return o.acpClient.RunIteration(o.ctx, prompt)
+			return o.runner.RunIteration(o.ctx, prompt)
 		})
 		if err != nil {
 			// Log the error but continue with graceful handling
@@ -261,8 +285,13 @@ func (o *Orchestrator) Run() error {
 			fmt.Printf("\n✓ Iteration #%d complete\n\n", currentIteration)
 		}
 
-		// Check if session_complete was signaled
-		if o.acpClient.IsSessionComplete() {
+		// Check if session_complete was signaled by checking session state
+		state, err := o.store.LoadState(o.ctx, o.cfg.SessionName)
+		if err != nil {
+			logger.Error("Failed to load session state: %v", err)
+			return fmt.Errorf("failed to load session state: %w", err)
+		}
+		if state.Complete {
 			logger.Info("Session '%s' marked as complete by agent", o.cfg.SessionName)
 			fmt.Printf("Session '%s' marked as complete by agent\n", o.cfg.SessionName)
 			break
@@ -311,16 +340,8 @@ func (o *Orchestrator) Stop() error {
 		o.tuiProgram = nil
 	}
 
-	// Stop ACP client (kill subprocess if running)
-	if o.acpClient != nil {
-		logger.Debug("Cleaning up ACP client")
-		if err := o.acpClient.Cleanup(); err != nil {
-			logger.Error("ACP client cleanup failed: %v", err)
-			multiErr.Append(fmt.Errorf("ACP client cleanup failed: %w", err))
-		} else {
-			logger.Debug("ACP client cleaned up")
-		}
-	}
+	// Agent runner cleanup is automatic - context cancellation will stop any running subprocess
+	logger.Debug("Agent runner will be cleaned up via context cancellation")
 
 	// Close NATS connection and server using helper
 	logger.Debug("Shutting down NATS")
