@@ -41,9 +41,7 @@ func (s *Spinner) View() string {
 
 // Tick returns the tick command to start animation
 func (s *Spinner) Tick() tea.Cmd {
-	return func() tea.Msg {
-		return s.model.Tick()
-	}
+	return s.model.Tick
 }
 
 // SetStyle updates the spinner's lipgloss style

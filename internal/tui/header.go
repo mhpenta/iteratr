@@ -88,6 +88,11 @@ func (h *Header) buildDesktopLeft() string {
 		left += sep + styleHeaderInfo.Render(iterInfo)
 	}
 
+	// Add current task if available
+	if task := h.getCurrentTask(); task != "" {
+		left += sep + styleHeaderInfo.Render(task)
+	}
+
 	return left
 }
 
@@ -118,6 +123,11 @@ func (h *Header) buildCompactLeft() string {
 		left += sep + styleHeaderInfo.Render(iterInfo)
 	}
 
+	// Add current task if available (shorter in compact mode)
+	if task := h.getCurrentTask(); task != "" {
+		left += sep + styleHeaderInfo.Render(task)
+	}
+
 	return left
 }
 
@@ -140,6 +150,31 @@ func (h *Header) SetState(state *session.State) {
 // SetLayoutMode updates the layout mode (desktop/compact).
 func (h *Header) SetLayoutMode(mode LayoutMode) {
 	h.layoutMode = mode
+}
+
+// getCurrentTask returns the content of the current in_progress task, truncated if needed.
+func (h *Header) getCurrentTask() string {
+	if h.state == nil || h.state.Tasks == nil {
+		return ""
+	}
+
+	// Find first in_progress task
+	for _, task := range h.state.Tasks {
+		if task.Status == "in_progress" {
+			content := task.Content
+			// Truncate based on layout mode
+			maxLen := 40
+			if h.layoutMode == LayoutCompact {
+				maxLen = 20
+			}
+			if len(content) > maxLen {
+				content = content[:maxLen-3] + "..."
+			}
+			return content
+		}
+	}
+
+	return ""
 }
 
 // Update handles messages. Header is mostly static, so this is minimal.
