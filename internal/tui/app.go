@@ -179,15 +179,19 @@ func (a *App) handleViewKeys(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "1":
 		a.activeView = ViewDashboard
+		a.footer.SetActiveView(ViewDashboard)
 		return func() tea.Msg { return nil }
 	case "2":
 		a.activeView = ViewLogs
+		a.footer.SetActiveView(ViewLogs)
 		return func() tea.Msg { return nil }
 	case "3":
 		a.activeView = ViewNotes
+		a.footer.SetActiveView(ViewNotes)
 		return func() tea.Msg { return nil }
 	case "4":
 		a.activeView = ViewInbox
+		a.footer.SetActiveView(ViewInbox)
 		return func() tea.Msg { return nil }
 	}
 	return nil
@@ -382,6 +386,10 @@ func (a *App) propagateSizes() {
 	a.header.SetSize(a.layout.Header.Dx(), a.layout.Header.Dy())
 	a.footer.SetSize(a.layout.Footer.Dx(), a.layout.Footer.Dy())
 	a.status.SetSize(a.layout.Status.Dx(), a.layout.Status.Dy())
+
+	// Propagate layout mode and active view to footer
+	a.footer.SetLayoutMode(a.layout.Mode)
+	a.footer.SetActiveView(a.activeView)
 
 	// Propagate sizes to main content components
 	// Note: dashboard owns the agent output component, so we only size the dashboard
