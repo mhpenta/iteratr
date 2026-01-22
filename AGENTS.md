@@ -57,7 +57,7 @@ Example:
 
 When you need up-to-date information about technologies used in this project, use btca to query source repositories directly.
 
-**Available resources**: opencode, bubbleteaV2, bubbles, natsGo, acpGoSdk
+**Available resources**: opencode, bubbleteaV2, natsGo, acpGoSdk, bubbles, crush, ultraviolet, lipgloss
 
 ### Usage
 
@@ -83,3 +83,22 @@ When building TUI components, prefer using Bubbles v2 pre-built components whene
 - Paginator (page navigation)
 
 Query bubbles resource for component usage: `btca ask -r bubbles -q "How do I use the viewport component?"`
+
+### Using Ultraviolet for Layouts
+
+Use Ultraviolet for rectangle-based layout management instead of manual dimension calculations:
+- `uv.SplitVertical()` - Split area into rows (top-to-bottom)
+- `uv.SplitHorizontal()` - Split area into columns (left-to-right)
+- `uv.Fixed(size)` - Fixed pixel/character size constraint
+- `uv.Flex()` - Takes remaining space
+
+Query ultraviolet resource for layout patterns: `btca ask -r ultraviolet -q "How do I create a responsive layout with header, content, and footer?"`
+
+### Using Lipgloss for Styling
+
+Use Lipgloss for styling and flexbox-like content composition:
+- `lipgloss.JoinVertical()` - Stack content vertically
+- `lipgloss.JoinHorizontal()` - Place content side-by-side
+- `lipgloss.NewStyle()` - Create styled text with colors, borders, padding
+
+Query lipgloss resource for styling: `btca ask -r lipgloss -q "How do I create a styled box with borders and padding?"`

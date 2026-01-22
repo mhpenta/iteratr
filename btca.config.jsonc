@@ -41,6 +41,20 @@
       "url": "https://github.com/charmbracelet/crush",
       "branch": "main",
       "specialNotes": "Stylish TUI components including scroll and messages"
+    },
+    {
+      "type": "git",
+      "name": "ultraviolet",
+      "url": "https://github.com/charmbracelet/ultraviolet",
+      "branch": "main",
+      "specialNotes": "Rectangle-based layout system for TUIs. Use for SplitVertical/SplitHorizontal layouts, responsive breakpoints."
+    },
+    {
+      "type": "git",
+      "name": "lipgloss",
+      "url": "https://github.com/charmbracelet/lipgloss",
+      "branch": "master",
+      "specialNotes": "Style definitions for terminal UIs. Flexbox-like composition with JoinVertical/JoinHorizontal."
     }
   ],
   "model": "claude-haiku-4-5",
