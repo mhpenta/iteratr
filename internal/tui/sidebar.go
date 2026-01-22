@@ -4,31 +4,36 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
 )
 
-// TaskSidebar displays tasks in a compact sidebar with status bar at bottom.
-type TaskSidebar struct {
-	state        *session.State
-	width        int
-	height       int
-	cursor       int // Selected task index
-	scrollOffset int // For scrolling when list exceeds available height
-	focused      bool
+// Sidebar displays tasks and notes in two sections.
+type Sidebar struct {
+	state         *session.State
+	width         int
+	height        int
+	tasksViewport viewport.Model
+	notesViewport viewport.Model
+	cursor        int // Selected task index (for future interactivity)
+	focused       bool
 }
 
-// NewTaskSidebar creates a new TaskSidebar component.
-func NewTaskSidebar() *TaskSidebar {
-	return &TaskSidebar{
-		cursor:  0,
-		focused: false,
+// NewSidebar creates a new Sidebar component.
+func NewSidebar() *Sidebar {
+	return &Sidebar{
+		tasksViewport: viewport.New(),
+		notesViewport: viewport.New(),
+		cursor:        0,
+		focused:       false,
 	}
 }
 
 // Update handles messages for the sidebar.
-func (s *TaskSidebar) Update(msg tea.Msg) tea.Cmd {
+func (s *Sidebar) Update(msg tea.Msg) tea.Cmd {
 	if !s.focused {
 		return nil
 	}
@@ -40,53 +45,71 @@ func (s *TaskSidebar) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-// handleKeyPress handles keyboard input for task navigation.
-func (s *TaskSidebar) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
-	tasks := s.getTasks()
-	maxIndex := len(tasks) - 1
-	if maxIndex < 0 {
-		return nil
-	}
+// handleKeyPress handles keyboard input for viewport scrolling.
+func (s *Sidebar) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
+	// Delegate to viewports for scrolling
+	var cmds []tea.Cmd
 
-	switch msg.String() {
-	case "j", "down":
-		if s.cursor < maxIndex {
-			s.cursor++
-			s.adjustScroll()
-		}
-	case "k", "up":
-		if s.cursor > 0 {
-			s.cursor--
-			s.adjustScroll()
-		}
-	case "g":
-		s.cursor = 0
-		s.scrollOffset = 0
-	case "G":
-		s.cursor = maxIndex
-		s.adjustScroll()
-	}
+	var cmd tea.Cmd
+	s.tasksViewport, cmd = s.tasksViewport.Update(msg)
+	cmds = append(cmds, cmd)
 
-	return nil
+	s.notesViewport, cmd = s.notesViewport.Update(msg)
+	cmds = append(cmds, cmd)
+
+	return tea.Batch(cmds...)
 }
 
-// adjustScroll adjusts scroll offset to keep cursor visible.
-func (s *TaskSidebar) adjustScroll() {
-	// Each task is 1 line, reserve 5 for header, borders, and status bar
-	visibleLines := s.height - 5
-	if visibleLines < 1 {
-		visibleLines = 1
-	}
+// drawTasksSection renders the tasks section with header and viewport content.
+func (s *Sidebar) drawTasksSection(scr uv.Screen, area uv.Rectangle) {
+	// Draw panel with "Tasks" title
+	inner := DrawPanel(scr, area, "Tasks", s.focused)
 
-	if s.cursor >= s.scrollOffset+visibleLines {
-		s.scrollOffset = s.cursor - visibleLines + 1
-	} else if s.cursor < s.scrollOffset {
-		s.scrollOffset = s.cursor
+	// Render viewport content
+	content := s.tasksViewport.View()
+	DrawText(scr, inner, content)
+
+	// Draw scroll indicator if needed
+	if s.tasksViewport.TotalLineCount() > s.tasksViewport.Height() {
+		pct := s.tasksViewport.ScrollPercent()
+		indicator := fmt.Sprintf(" %d%% ", int(pct*100))
+		indicatorArea := uv.Rect(
+			area.Max.X-len(indicator)-1,
+			area.Max.Y-1,
+			len(indicator),
+			1,
+		)
+		style := lipgloss.NewStyle().Background(colorBgSubtle).Foreground(colorMuted)
+		DrawStyled(scr, indicatorArea, style, indicator)
+	}
+}
+
+// drawNotesSection renders the notes section with header and viewport content.
+func (s *Sidebar) drawNotesSection(scr uv.Screen, area uv.Rectangle) {
+	// Draw panel with "Notes" title
+	inner := DrawPanel(scr, area, "Notes", false) // Notes section never focused
+
+	// Render viewport content
+	content := s.notesViewport.View()
+	DrawText(scr, inner, content)
+
+	// Draw scroll indicator if needed
+	if s.notesViewport.TotalLineCount() > s.notesViewport.Height() {
+		pct := s.notesViewport.ScrollPercent()
+		indicator := fmt.Sprintf(" %d%% ", int(pct*100))
+		indicatorArea := uv.Rect(
+			area.Max.X-len(indicator)-1,
+			area.Max.Y-1,
+			len(indicator),
+			1,
+		)
+		style := lipgloss.NewStyle().Background(colorBgSubtle).Foreground(colorMuted)
+		DrawStyled(scr, indicatorArea, style, indicator)
 	}
 }
 
 // getTasks returns all tasks in display order (in_progress first, then remaining, blocked, completed).
-func (s *TaskSidebar) getTasks() []*session.Task {
+func (s *Sidebar) getTasks() []*session.Task {
 	if s.state == nil {
 		return nil
 	}
@@ -114,70 +137,40 @@ func (s *TaskSidebar) getTasks() []*session.Task {
 	return tasks
 }
 
-// Render returns the sidebar view as a string.
-func (s *TaskSidebar) Render() string {
-	// Guard against zero dimensions (not yet sized)
-	if s.width < 10 || s.height < 5 {
-		return ""
+// Draw renders the sidebar to the screen buffer with tasks and notes sections.
+func (s *Sidebar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
+	// Guard against zero dimensions
+	if area.Dx() < 10 || area.Dy() < 5 {
+		return nil
 	}
 
-	// Header
-	header := styleSidebarHeader.Width(s.width - 2).Render("Tasks")
-
-	// Task list
-	taskList := s.renderTaskList()
-
-	// Calculate heights
-	headerHeight := 2                         // header + border
-	listHeight := s.height - headerHeight - 2 // -2 for borders
-	if listHeight < 1 {
-		listHeight = 1
+	// Split area vertically: Tasks (60%) | Notes (40%)
+	tasksHeight := int(float64(area.Dy()) * 0.6)
+	if tasksHeight < 3 {
+		tasksHeight = 3
 	}
 
-	// Ensure task list fills available space
-	taskLines := strings.Split(taskList, "\n")
-	for len(taskLines) < listHeight {
-		taskLines = append(taskLines, "")
-	}
-	if len(taskLines) > listHeight {
-		taskLines = taskLines[:listHeight]
-	}
-	taskList = strings.Join(taskLines, "\n")
+	tasksArea, notesArea := uv.SplitVertical(area, uv.Fixed(tasksHeight))
 
-	// Build sidebar content
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		taskList,
-	)
+	// Draw Tasks section
+	s.drawTasksSection(scr, tasksArea)
 
-	// Apply sidebar border style
-	return styleSidebarBorder.Width(s.width).Height(s.height).Render(content)
+	// Draw Notes section
+	s.drawNotesSection(scr, notesArea)
+
+	return nil
 }
 
-// renderTaskList renders the task items.
-func (s *TaskSidebar) renderTaskList() string {
+// buildTasksContent builds the content string for the tasks viewport.
+func (s *Sidebar) buildTasksContent() string {
 	tasks := s.getTasks()
 	if len(tasks) == 0 {
 		return styleDim.Render("  No tasks")
 	}
 
 	var lines []string
-	visibleLines := s.height - 5 // Reserve for header and status bar
-	if visibleLines < 1 {
-		visibleLines = 1
-	}
-
-	for i, task := range tasks {
-		// Skip tasks before scroll offset
-		if i < s.scrollOffset {
-			continue
-		}
-		// Stop if we've rendered enough visible lines
-		if len(lines) >= visibleLines {
-			break
-		}
-
-		line := s.renderTask(task, i == s.cursor)
+	for _, task := range tasks {
+		line := s.renderTask(task)
 		lines = append(lines, line)
 	}
 
@@ -185,7 +178,7 @@ func (s *TaskSidebar) renderTaskList() string {
 }
 
 // renderTask renders a single task line.
-func (s *TaskSidebar) renderTask(task *session.Task, isSelected bool) string {
+func (s *Sidebar) renderTask(task *session.Task) string {
 	// Status indicator
 	var indicator string
 	var indicatorStyle lipgloss.Style
@@ -223,39 +216,166 @@ func (s *TaskSidebar) renderTask(task *session.Task, isSelected bool) string {
 	styledIndicator := indicatorStyle.Render(indicator)
 	line := fmt.Sprintf(" %s %s", styledIndicator, content)
 
-	// Apply selection style
-	if isSelected && s.focused {
-		line = styleTaskSelected.Width(s.width - 2).Render(line)
-	} else if isSelected {
-		// Subtle highlight when not focused
-		line = styleDim.Render(line)
-	}
-
 	return line
 }
 
-// SetFocused sets whether the sidebar has keyboard focus.
-func (s *TaskSidebar) SetFocused(focused bool) {
+// SetFocus sets whether the sidebar has keyboard focus.
+func (s *Sidebar) SetFocus(focused bool) {
 	s.focused = focused
 }
 
 // IsFocused returns whether the sidebar has keyboard focus.
-func (s *TaskSidebar) IsFocused() bool {
+func (s *Sidebar) IsFocused() bool {
 	return s.focused
 }
 
-// UpdateSize updates the sidebar dimensions.
-func (s *TaskSidebar) UpdateSize(width, height int) tea.Cmd {
+// SetSize updates the sidebar dimensions and viewport sizes.
+func (s *Sidebar) SetSize(width, height int) {
 	s.width = width
 	s.height = height
-	return nil
+
+	// Calculate section heights (Tasks 60%, Notes 40%)
+	tasksHeight := int(float64(height) * 0.6)
+	if tasksHeight < 3 {
+		tasksHeight = 3
+	}
+	notesHeight := height - tasksHeight
+	if notesHeight < 2 {
+		notesHeight = 2
+		tasksHeight = height - notesHeight
+	}
+
+	// Account for borders and headers (2 chars each side, 2 lines for header/border)
+	s.tasksViewport.SetWidth(width - 4)
+	s.tasksViewport.SetHeight(tasksHeight - 4)
+	s.notesViewport.SetWidth(width - 4)
+	s.notesViewport.SetHeight(notesHeight - 4)
 }
 
-// UpdateState updates the sidebar with new session state.
-func (s *TaskSidebar) UpdateState(state *session.State) tea.Cmd {
+// SetState updates the sidebar with new session state.
+func (s *Sidebar) SetState(state *session.State) {
 	s.state = state
-	return nil
+	s.updateContent()
 }
+
+// updateContent rebuilds viewport content from state.
+func (s *Sidebar) updateContent() {
+	if s.state == nil {
+		return
+	}
+
+	// Update tasks viewport
+	s.tasksViewport.SetContent(s.buildTasksContent())
+
+	// Update notes viewport
+	s.notesViewport.SetContent(s.buildNotesContent())
+}
+
+// buildNotesContent builds the content string for the notes viewport.
+func (s *Sidebar) buildNotesContent() string {
+	if len(s.state.Notes) == 0 {
+		return styleDim.Render("  No notes")
+	}
+
+	var lines []string
+	// Show recent notes (last 10)
+	startIdx := 0
+	if len(s.state.Notes) > 10 {
+		startIdx = len(s.state.Notes) - 10
+	}
+
+	for _, note := range s.state.Notes[startIdx:] {
+		line := s.renderNote(note)
+		lines = append(lines, line)
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// renderNote renders a single note line with type indicator.
+func (s *Sidebar) renderNote(note *session.Note) string {
+	// Type indicator
+	var indicator string
+	var indicatorStyle lipgloss.Style
+
+	switch note.Type {
+	case "learning":
+		indicator = "💡"
+		indicatorStyle = styleStatusCompleted // Green-ish
+	case "stuck":
+		indicator = "🚫"
+		indicatorStyle = styleStatusBlocked // Red
+	case "tip":
+		indicator = "💬"
+		indicatorStyle = styleStatusInProgress // Yellow
+	case "decision":
+		indicator = "⚡"
+		indicatorStyle = styleStatusRemaining // Blue
+	default:
+		indicator = "📝"
+		indicatorStyle = styleDim
+	}
+
+	// Truncate content to fit width
+	maxContentWidth := s.width - 8
+	if maxContentWidth < 10 {
+		maxContentWidth = 10
+	}
+
+	content := note.Content
+	if len(content) > maxContentWidth {
+		content = content[:maxContentWidth-3] + "..."
+	}
+
+	// Build line
+	styledIndicator := indicatorStyle.Render(indicator)
+	line := fmt.Sprintf(" %s %s", styledIndicator, content)
+
+	return line
+}
+
+// Render provides legacy string-based rendering for backward compatibility.
+// This method will be removed once App is refactored to use Screen/Draw pattern.
+func (s *Sidebar) Render() string {
+	// Guard against zero dimensions
+	if s.width < 10 || s.height < 5 {
+		return ""
+	}
+
+	// Calculate section heights (Tasks 60%, Notes 40%)
+	tasksHeight := int(float64(s.height) * 0.6)
+	if tasksHeight < 3 {
+		tasksHeight = 3
+	}
+	notesHeight := s.height - tasksHeight
+	if notesHeight < 2 {
+		notesHeight = 2
+		tasksHeight = s.height - notesHeight
+	}
+
+	// Render tasks section
+	tasksHeader := styleSidebarHeader.Width(s.width - 2).Render("Tasks")
+	tasksContent := s.tasksViewport.View()
+	tasksSection := lipgloss.JoinVertical(lipgloss.Left, tasksHeader, tasksContent)
+	tasksBox := styleSidebarBorder.Width(s.width).Height(tasksHeight).Render(tasksSection)
+
+	// Render notes section
+	notesHeader := styleSidebarHeader.Width(s.width - 2).Render("Notes")
+	notesContent := s.notesViewport.View()
+	notesSection := lipgloss.JoinVertical(lipgloss.Left, notesHeader, notesContent)
+	notesBox := styleSidebarBorder.Width(s.width).Height(notesHeight).Render(notesSection)
+
+	// Join sections vertically
+	return lipgloss.JoinVertical(lipgloss.Left, tasksBox, notesBox)
+}
+
+// Legacy methods for backward compatibility
+func (s *Sidebar) SetFocused(focused bool)                  { s.SetFocus(focused) }
+func (s *Sidebar) UpdateSize(width, height int) tea.Cmd     { s.SetSize(width, height); return nil }
+func (s *Sidebar) UpdateState(state *session.State) tea.Cmd { s.SetState(state); return nil }
+
+// Compile-time interface check
+var _ FocusableComponent = (*Sidebar)(nil)
 
 // Sidebar styles
 var (

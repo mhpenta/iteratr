@@ -31,7 +31,7 @@ type Dashboard struct {
 	width       int
 	height      int
 	agentOutput *AgentOutput // Reference to agent output for rendering
-	sidebar     *TaskSidebar // Task sidebar on the right
+	sidebar     *Sidebar     // Sidebar on the right (tasks + notes)
 	focus       FocusArea    // Which area has keyboard focus
 	focused     bool         // Whether the dashboard has focus
 }
@@ -40,7 +40,7 @@ type Dashboard struct {
 func NewDashboard(agentOutput *AgentOutput) *Dashboard {
 	return &Dashboard{
 		agentOutput: agentOutput,
-		sidebar:     NewTaskSidebar(),
+		sidebar:     NewSidebar(),
 		focus:       FocusMain,
 	}
 }
