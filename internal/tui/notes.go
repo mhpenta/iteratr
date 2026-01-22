@@ -136,19 +136,39 @@ func (n *NotesPanel) renderNote(note *session.Note) string {
 	return styleNoteContent.Render(noteStr)
 }
 
-// UpdateSize updates the notes panel dimensions.
-func (n *NotesPanel) UpdateSize(width, height int) tea.Cmd {
+// SetSize updates the notes panel dimensions.
+func (n *NotesPanel) SetSize(width, height int) {
 	n.width = width
 	n.height = height
 	n.viewport.SetWidth(width - 2) // Account for border
 	n.viewport.SetHeight(height - 2)
+}
+
+// SetState updates the notes panel with new session state.
+func (n *NotesPanel) SetState(state *session.State) {
+	n.state = state
+	n.updateContent()
+}
+
+// SetFocus sets the focus state of the notes panel.
+func (n *NotesPanel) SetFocus(focused bool) {
+	n.focused = focused
+}
+
+// IsFocused returns whether the notes panel is focused.
+func (n *NotesPanel) IsFocused() bool {
+	return n.focused
+}
+
+// UpdateSize updates the notes panel dimensions (legacy compatibility).
+func (n *NotesPanel) UpdateSize(width, height int) tea.Cmd {
+	n.SetSize(width, height)
 	return nil
 }
 
-// UpdateState updates the notes panel with new session state.
+// UpdateState updates the notes panel with new session state (legacy compatibility).
 func (n *NotesPanel) UpdateState(state *session.State) tea.Cmd {
-	n.state = state
-	n.updateContent()
+	n.SetState(state)
 	return nil
 }
 
@@ -193,3 +213,6 @@ func (n *NotesPanel) updateContent() {
 	content := strings.Join(sections, "\n")
 	n.viewport.SetContent(content)
 }
+
+// Compile-time interface checks
+var _ FocusableComponent = (*NotesPanel)(nil)
