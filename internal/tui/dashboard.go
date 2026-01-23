@@ -22,15 +22,6 @@ const (
 	FocusInput
 )
 
-// FocusArea represents which part of the dashboard has keyboard focus.
-// Deprecated: Use FocusPane instead.
-type FocusArea int
-
-const (
-	FocusMain FocusArea = iota
-	FocusSidebar
-)
-
 // SidebarWidth is the fixed width for the task sidebar.
 const SidebarWidth = 45
 
@@ -43,7 +34,6 @@ type Dashboard struct {
 	height       int
 	agentOutput  *AgentOutput // Reference to agent output for rendering
 	sidebar      *Sidebar     // Sidebar on the right (tasks + notes)
-	focus        FocusArea    // Which area has keyboard focus (deprecated: use focusPane)
 	focusPane    FocusPane    // Which pane has keyboard focus
 	focused      bool         // Whether the dashboard has focus
 	inputFocused bool         // Whether the input field is focused
@@ -56,7 +46,6 @@ func NewDashboard(agentOutput *AgentOutput) *Dashboard {
 	return &Dashboard{
 		agentOutput: agentOutput,
 		sidebar:     NewSidebar(),
-		focus:       FocusMain,
 		focusPane:   FocusAgent,
 	}
 }
@@ -188,7 +177,7 @@ func (d *Dashboard) renderMainContent(width int) string {
 	var agentSection string
 	if d.agentOutput != nil {
 		focusIndicator := ""
-		if d.focus == FocusMain {
+		if d.focusPane == FocusAgent {
 			focusIndicator = " " + styleStatusInProgress.Render("●")
 		}
 		agentLabel := styleStatLabel.Render("Agent Output:") + focusIndicator
