@@ -11,3 +11,4 @@
 | [state-snapshots](./state-snapshots.md) | Draft | KV snapshots for faster state loading (deferred from session-task-enhancements) |
 | [acp-migration](./acp-migration.md) | Draft | Migrate back to ACP protocol for opencode communication |
 | [clickable-task-modal](./clickable-task-modal.md) | Draft | Click task in sidebar to open detail modal with bubblezone |
+| [agent-message-display](./agent-message-display.md) | Draft | Rich agent message rendering: thinking blocks, tool status, markdown, animations |
