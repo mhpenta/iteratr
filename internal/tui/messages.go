@@ -378,7 +378,7 @@ func (t *ToolMessageItem) Render(width int) string {
 			truncMsg := fmt.Sprintf("…(%d more lines, click to expand)", hiddenCount)
 			if isCodeOutput {
 				// Code truncation: match code block background
-				hint := styleCodeTruncation.Width(outputWidth).Render(truncMsg)
+				hint := styleCodeTruncation.Width(outputWidth - 2).Render(truncMsg)
 				result.WriteString(hint)
 			} else {
 				hint := styleToolTruncation.Width(outputWidth).Render(truncMsg)

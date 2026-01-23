@@ -679,3 +679,63 @@ func TestAgentOutput_AppendFinish_CancelsPendingTools(t *testing.T) {
 		t.Error("expected cancel message to be appended")
 	}
 }
+
+func TestAgentOutput_InputRendersCorrectly(t *testing.T) {
+	ao := NewAgentOutput()
+
+	// Verify input field was initialized with correct defaults
+	if ao.input.Value() != "" {
+		t.Errorf("expected input value to be empty initially, got %q", ao.input.Value())
+	}
+	if ao.input.Placeholder != "Send a message..." {
+		t.Errorf("expected placeholder 'Send a message...', got %q", ao.input.Placeholder)
+	}
+	if ao.input.Prompt != "> " {
+		t.Errorf("expected prompt '> ', got %q", ao.input.Prompt)
+	}
+
+	// Verify input starts unfocused
+	if ao.input.Focused() {
+		t.Error("expected input to be unfocused initially")
+	}
+
+	// Set input focused
+	ao.SetInputFocused(true)
+	if !ao.input.Focused() {
+		t.Error("expected input to be focused after SetInputFocused(true)")
+	}
+
+	// Set some input text
+	ao.input.SetValue("test message")
+	if ao.InputValue() != "test message" {
+		t.Errorf("expected input value 'test message', got %q", ao.InputValue())
+	}
+
+	// Reset input
+	ao.ResetInput()
+	if ao.InputValue() != "" {
+		t.Errorf("expected input value to be empty after reset, got %q", ao.InputValue())
+	}
+
+	// Set input unfocused
+	ao.SetInputFocused(false)
+	if ao.input.Focused() {
+		t.Error("expected input to be unfocused after SetInputFocused(false)")
+	}
+
+	// Verify UpdateSize configures input width
+	ao.UpdateSize(80, 20)
+	if ao.width != 80 {
+		t.Errorf("expected width 80, got %d", ao.width)
+	}
+	if ao.height != 20 {
+		t.Errorf("expected height 20, got %d", ao.height)
+	}
+
+	// Input width should be set (width - 4 for borders/padding)
+	expectedInputWidth := 76
+	actualInputWidth := ao.input.Width()
+	if actualInputWidth != expectedInputWidth {
+		t.Errorf("expected input width %d, got %d", expectedInputWidth, actualInputWidth)
+	}
+}
