@@ -761,3 +761,14 @@ func (a *AgentOutput) SetScrollFocused(focused bool) {
 		a.scrollList.SetFocused(focused)
 	}
 }
+
+// SetBusy updates the input placeholder based on whether the agent is busy.
+// When busy, shows "Agent is working..." to indicate the agent is processing.
+// When not busy, shows "Send a message..." to invite user input.
+func (a *AgentOutput) SetBusy(busy bool) {
+	if busy {
+		a.input.Placeholder = "Agent is working..."
+	} else {
+		a.input.Placeholder = "Send a message..."
+	}
+}

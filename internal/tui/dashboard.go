@@ -271,8 +271,12 @@ func (d *Dashboard) IsFocused() bool {
 }
 
 // SetAgentBusy sets whether the agent is currently processing.
+// Updates the input placeholder to show "Agent is working..." when busy.
 func (d *Dashboard) SetAgentBusy(busy bool) {
 	d.agentBusy = busy
+	if d.agentOutput != nil {
+		d.agentOutput.SetBusy(busy)
+	}
 }
 
 // updateScrollListFocus sets the focused state on ScrollLists based on the active pane.
