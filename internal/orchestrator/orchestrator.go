@@ -150,8 +150,7 @@ func (o *Orchestrator) Start() error {
 		SessionName: o.cfg.SessionName,
 		NATSPort:    o.natsPort,
 		OnText:      nil, // Set later based on headless mode
-		OnToolUse:   nil, // Not needed - tools called via CLI
-		OnError:     nil, // Errors returned from RunIteration
+		OnToolCall:  nil, // Set later based on headless mode
 	})
 
 	// 6. Start TUI if not headless
@@ -278,10 +277,15 @@ func (o *Orchestrator) Run() error {
 				OnText: func(content string) {
 					o.tuiProgram.Send(tui.AgentOutputMsg{Content: content})
 				},
-				OnToolUse: func(name string, input map[string]any) {
-					o.tuiProgram.Send(tui.AgentToolMsg{Tool: name, Input: input})
+				OnToolCall: func(event agent.ToolCallEvent) {
+					o.tuiProgram.Send(tui.AgentToolCallMsg{
+						ToolCallID: event.ToolCallID,
+						Title:      event.Title,
+						Status:     event.Status,
+						Input:      event.RawInput,
+						Output:     event.Output,
+					})
 				},
-				OnError: nil, // Errors returned from RunIteration
 			})
 		} else {
 			// Print to stdout in headless mode
@@ -293,10 +297,24 @@ func (o *Orchestrator) Run() error {
 				OnText: func(content string) {
 					fmt.Print(content)
 				},
-				OnToolUse: func(name string, input map[string]any) {
-					fmt.Printf("\n[tool: %s]\n", name)
+				OnToolCall: func(event agent.ToolCallEvent) {
+					// Simple tool lifecycle output for headless mode
+					switch event.Status {
+					case "pending":
+						fmt.Printf("\n[tool: %s] ...\n", event.Title)
+					case "in_progress":
+						if cmd, ok := event.RawInput["command"].(string); ok {
+							fmt.Printf("[tool: %s] command: %s\n", event.Title, cmd)
+						}
+					case "completed":
+						outputLines := len(event.Output)
+						if outputLines > 0 {
+							fmt.Printf("[tool: %s] ✓ (output: %d bytes)\n", event.Title, len(event.Output))
+						} else {
+							fmt.Printf("[tool: %s] ✓\n", event.Title)
+						}
+					}
 				},
-				OnError: nil, // Errors returned from RunIteration
 			})
 		}
 

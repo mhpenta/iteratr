@@ -21,16 +21,19 @@ const (
 
 // AgentMessage represents a single message from the agent.
 type AgentMessage struct {
-	Type      MessageType
-	Content   string
-	Tool      string // Tool name for tool messages
-	Iteration int    // Iteration number for dividers
+	Type       MessageType
+	Content    string
+	Tool       string // Tool name for tool messages
+	ToolStatus string // Tool status: "pending", "in_progress", "completed"
+	ToolOutput string // Tool output (only for completed status)
+	Iteration  int    // Iteration number for dividers
 }
 
 // AgentOutput displays streaming agent output with auto-scroll.
 type AgentOutput struct {
 	viewport   viewport.Model
 	messages   []AgentMessage
+	toolIndex  map[string]int // toolCallId → message index
 	width      int
 	height     int
 	autoScroll bool // Whether to auto-scroll to bottom on new content
@@ -46,6 +49,7 @@ var _ Component = (*AgentOutput)(nil)
 func NewAgentOutput() *AgentOutput {
 	return &AgentOutput{
 		messages:   make([]AgentMessage, 0),
+		toolIndex:  make(map[string]int),
 		autoScroll: true,
 	}
 }
@@ -155,15 +159,32 @@ func (a *AgentOutput) AppendText(content string) tea.Cmd {
 	return nil
 }
 
-// AppendTool adds a tool use message to the output.
-func (a *AgentOutput) AppendTool(tool string, input map[string]any) tea.Cmd {
-	// Format tool info
-	content := formatToolInput(input)
-	a.messages = append(a.messages, AgentMessage{
-		Type:    MessageTypeTool,
-		Content: content,
-		Tool:    tool,
-	})
+// AppendToolCall handles tool lifecycle events.
+// If toolCallId not in toolIndex: append new message, store index.
+// If toolCallId exists: update message in-place (status, input, output).
+func (a *AgentOutput) AppendToolCall(msg AgentToolCallMsg) tea.Cmd {
+	idx, exists := a.toolIndex[msg.ToolCallID]
+	if !exists {
+		// New tool call - append message
+		content := formatToolInput(msg.Input)
+		a.messages = append(a.messages, AgentMessage{
+			Type:       MessageTypeTool,
+			Tool:       msg.Title,
+			ToolStatus: msg.Status,
+			Content:    content,
+		})
+		a.toolIndex[msg.ToolCallID] = len(a.messages) - 1
+	} else {
+		// Update existing tool call in-place
+		m := &a.messages[idx]
+		m.ToolStatus = msg.Status
+		if len(msg.Input) > 0 {
+			m.Content = formatToolInput(msg.Input)
+		}
+		if msg.Output != "" {
+			m.ToolOutput = msg.Output
+		}
+	}
 	a.refreshContent()
 	return nil
 }
@@ -238,7 +259,7 @@ func (a *AgentOutput) renderTextMessage(msg AgentMessage, width int) string {
 	return style.Render(wrapped)
 }
 
-// renderToolMessage renders a tool use message with different styling.
+// renderToolMessage renders a tool use message with lifecycle status.
 func (a *AgentOutput) renderToolMessage(msg AgentMessage, width int) string {
 	style := lipgloss.NewStyle().
 		Border(lipgloss.ThickBorder(), false, false, false, true).
@@ -247,15 +268,43 @@ func (a *AgentOutput) renderToolMessage(msg AgentMessage, width int) string {
 		MarginBottom(1).
 		Width(width)
 
-	// Tool header
-	header := lipgloss.NewStyle().
-		Foreground(colorSecondary).
-		Bold(true).
-		Render(fmt.Sprintf(" %s", msg.Tool))
+	// Choose icon and color based on status
+	var icon string
+	var iconColor lipgloss.Color
+	switch msg.ToolStatus {
+	case "pending":
+		icon = "⠋"
+		iconColor = colorWarning
+	case "in_progress":
+		icon = "⠋"
+		iconColor = colorWarning
+	case "completed":
+		icon = "✓"
+		iconColor = colorSuccess
+	default:
+		icon = "⠋"
+		iconColor = colorWarning
+	}
+
+	// Tool header with status icon
+	header := lipgloss.NewStyle().Foreground(iconColor).Render(icon) + " " +
+		lipgloss.NewStyle().Foreground(colorSecondary).Bold(true).Render(msg.Tool)
 
 	content := header
 	if msg.Content != "" {
 		content += "\n" + styleDim.Render(msg.Content)
+	}
+
+	// Show tool output if completed
+	if msg.ToolStatus == "completed" && msg.ToolOutput != "" {
+		outputHeader := styleDim.Render("─── output ───")
+		// Truncate if output is long (>3 lines)
+		outputLines := strings.Split(msg.ToolOutput, "\n")
+		if len(outputLines) > 3 {
+			outputLines = append(outputLines[:3], fmt.Sprintf("[... %d more lines]", len(outputLines)-3))
+		}
+		outputText := strings.Join(outputLines, "\n")
+		content += "\n" + outputHeader + "\n" + styleDim.Render(outputText)
 	}
 
 	return style.Render(content)

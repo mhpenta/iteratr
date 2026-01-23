@@ -110,8 +110,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AgentOutputMsg:
 		return a, a.agent.AppendText(msg.Content)
 
-	case AgentToolMsg:
-		return a, a.agent.AppendTool(msg.Tool, msg.Input)
+	case AgentToolCallMsg:
+		return a, a.agent.AppendToolCall(msg)
 
 	case IterationStartMsg:
 		return a, tea.Batch(
@@ -597,9 +597,12 @@ type AgentOutputMsg struct {
 	Content string
 }
 
-type AgentToolMsg struct {
-	Tool  string
-	Input map[string]any
+type AgentToolCallMsg struct {
+	ToolCallID string
+	Title      string
+	Status     string
+	Input      map[string]any
+	Output     string
 }
 
 type IterationStartMsg struct {
