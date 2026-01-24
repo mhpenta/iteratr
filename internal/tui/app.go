@@ -238,6 +238,11 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	// Note input modal gets priority when visible
+	if a.noteInputModal != nil && a.noteInputModal.IsVisible() {
+		return a, a.noteInputModal.Update(msg)
+	}
+
 	// 2. Logs modal captures keys when visible
 	if a.logsVisible {
 		switch msg.String() {

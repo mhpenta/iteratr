@@ -55,6 +55,33 @@ func (m *NoteInputModal) Close() {
 	m.visible = false
 }
 
+// Update handles keyboard input for the modal.
+// For now, this is a minimal implementation that will be expanded in later tasks.
+func (m *NoteInputModal) Update(msg tea.Msg) tea.Cmd {
+	if !m.visible {
+		return nil
+	}
+
+	// Handle key presses
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		switch keyMsg.String() {
+		case "esc":
+			// ESC closes the modal (TAS-8 will be implemented separately)
+			m.Close()
+			return nil
+		case "ctrl+enter":
+			// Ctrl+Enter submits (TAS-7 will be implemented separately)
+			// For now, just placeholder - actual CreateNoteMsg emission will come later
+			return nil
+		}
+	}
+
+	// Forward all other messages to textarea
+	var cmd tea.Cmd
+	m.textarea, cmd = m.textarea.Update(msg)
+	return cmd
+}
+
 // View renders the modal content (for testing and integration).
 func (m *NoteInputModal) View() string {
 	if !m.visible {
