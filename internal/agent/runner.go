@@ -104,17 +104,17 @@ func (r *Runner) Start(ctx context.Context) error {
 
 	// Call initialize → newSession → setModel sequence
 	if err := conn.initialize(ctx); err != nil {
-		conn.close()
-		cmd.Process.Kill()
-		cmd.Wait()
+		_ = conn.close()
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
 		return fmt.Errorf("ACP initialize failed: %w", err)
 	}
 
 	sessID, err := conn.newSession(ctx, r.workDir)
 	if err != nil {
-		conn.close()
-		cmd.Process.Kill()
-		cmd.Wait()
+		_ = conn.close()
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
 		return fmt.Errorf("ACP new session failed: %w", err)
 	}
 
@@ -122,9 +122,9 @@ func (r *Runner) Start(ctx context.Context) error {
 	if r.model != "" {
 		logger.Debug("Setting model: %s", r.model)
 		if err := conn.setModel(ctx, sessID, r.model); err != nil {
-			conn.close()
-			cmd.Process.Kill()
-			cmd.Wait()
+			_ = conn.close()
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
 			return fmt.Errorf("ACP set model failed: %w", err)
 		}
 	}
@@ -237,13 +237,13 @@ func (r *Runner) SendMessage(ctx context.Context, text string) error {
 func (r *Runner) Stop() {
 	if r.conn != nil {
 		logger.Debug("Closing ACP connection")
-		r.conn.close()
+		_ = r.conn.close()
 		r.conn = nil
 	}
 	if r.cmd != nil && r.cmd.Process != nil {
 		logger.Debug("Terminating opencode subprocess")
-		r.cmd.Process.Kill()
-		r.cmd.Wait()
+		_ = r.cmd.Process.Kill()
+		_ = r.cmd.Wait()
 		r.cmd = nil
 	}
 	r.sessionID = ""
