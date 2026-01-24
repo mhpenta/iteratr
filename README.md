@@ -32,16 +32,35 @@ iteratr is a Go CLI tool that orchestrates AI coding agents in an iterative loop
 
 ### Prerequisites
 
-- Go 1.25.5
 - [opencode](https://opencode.coder.com) installed and in PATH
 
-### Build from Source
+### Quick Install (recommended)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/mark3labs/iteratr/main/install.sh | sh
+```
+
+Install a specific version:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/mark3labs/iteratr/main/install.sh | sh -s v1.0.0
+```
+
+Install to a custom directory:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/mark3labs/iteratr/main/install.sh | INSTALL_DIR=~/.local/bin sh
+```
+
+### Go Install
+
+Requires Go 1.25+.
 
 ```bash
 go install github.com/mark3labs/iteratr/cmd/iteratr@latest
 ```
 
-Or clone and build:
+### Build from Source
 
 ```bash
 git clone https://github.com/mark3labs/iteratr.git
