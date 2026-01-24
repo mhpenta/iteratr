@@ -181,6 +181,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Open task modal with the selected task
 		a.taskModal.SetTask(msg.Task)
 		return a, nil
+
+	case CreateNoteMsg:
+		// Create a new note via Store.NoteAdd()
+		// The note will be published to NATS and picked up by event subscription
+		go func() {
+			_, err := a.store.NoteAdd(a.ctx, a.sessionName, session.NoteAddParams{
+				Content:   msg.Content,
+				Type:      msg.NoteType,
+				Iteration: msg.Iteration,
+			})
+			if err != nil {
+				// TODO: Add error handling/visual feedback
+				// For now, errors are silently ignored
+			}
+		}()
+		// Close the modal after submitting
+		a.noteInputModal.Close()
+		return a, nil
 	}
 
 	// Update status bar (for spinner animation) - always visible
@@ -644,6 +662,13 @@ type ConnectionStatusMsg struct {
 // UserInputMsg is sent when the user types a message in the input field.
 type UserInputMsg struct {
 	Text string
+}
+
+// CreateNoteMsg is sent when the user creates a new note from the input modal.
+type CreateNoteMsg struct {
+	Content   string
+	NoteType  string
+	Iteration int
 }
 
 // propagateSizes updates component sizes based on the current layout.
