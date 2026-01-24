@@ -344,11 +344,33 @@ var (
 				Italic(true).
 				MarginLeft(2)
 
-	// Diff view styles (for Edit tool output)
+	// Diff colors (shared by write blocks and diff view)
 	colorDiffInsertBg  = lipgloss.Color("#303a30") // Green-tinted background for insertions
 	colorDiffDeleteBg  = lipgloss.Color("#3a3030") // Red-tinted background for deletions
 	colorDiffEqualBg   = lipgloss.Color("#1e1e2e") // Neutral background for context lines
 	colorDiffMissingBg = lipgloss.Color("#181825") // Dim background for empty sides
+
+	// Write file block styles (green-tinted, same as diff insert)
+	styleWriteLineNum = lipgloss.NewStyle().
+				Foreground(colorOverlay0).
+				Background(colorDiffInsertBg).
+				PaddingRight(1)
+
+	styleWriteLineNumZero = lipgloss.NewStyle().
+				Foreground(colorDiffInsertBg).
+				Background(colorDiffInsertBg)
+
+	styleWriteContent = lipgloss.NewStyle().
+				Background(colorDiffInsertBg).
+				PaddingLeft(1)
+
+	styleWriteTruncation = lipgloss.NewStyle().
+				Foreground(colorSubtext0).
+				Background(colorDiffInsertBg).
+				Italic(true).
+				MarginLeft(2)
+
+	// Diff view styles (for Edit tool output)
 
 	styleDiffLineNumInsert = lipgloss.NewStyle().
 				Foreground(colorOverlay0).

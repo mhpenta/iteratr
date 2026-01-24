@@ -268,9 +268,9 @@ func (t *ToolMessageItem) Render(width int) string {
 
 	// Add formatted params if present
 	if len(t.input) > 0 {
-		// For edit tools, only show filePath in header (diff body shows the rest)
+		// For edit/write tools, only show filePath in header (body shows the rest)
 		paramInput := t.input
-		if t.kind == "edit" {
+		if t.kind == "edit" || (t.input["content"] != nil && t.input["filePath"] != nil) {
 			paramInput = make(map[string]any)
 			if fp, ok := t.input["filePath"]; ok {
 				paramInput["filePath"] = fp
@@ -330,6 +330,39 @@ func (t *ToolMessageItem) Render(width int) string {
 		}
 	}
 
+	// Check for Write file tool with content
+	isWriteFile := false
+	if t.kind != "edit" && t.status == ToolStatusSuccess {
+		if content, hasContent := t.input["content"]; hasContent {
+			if fp, hasFP := t.input["filePath"]; hasFP {
+				isWriteFile = true
+				result.WriteString("\n\n")
+				fileName := fmt.Sprintf("%v", fp)
+				contentStr := fmt.Sprintf("%v", content)
+
+				// Apply truncation like read file blocks
+				contentLines := strings.Split(contentStr, "\n")
+				var hiddenCount int
+				if !t.expanded && len(contentLines) > t.maxLines {
+					hiddenCount = len(contentLines) - t.maxLines
+					contentLines = contentLines[:t.maxLines]
+					contentStr = strings.Join(contentLines, "\n")
+				}
+
+				writeRendered := renderWriteBlock(contentStr, fileName, outputWidth)
+				result.WriteString(writeRendered)
+
+				if hiddenCount > 0 {
+					truncMsg := fmt.Sprintf("…(%d more lines, click to expand)", hiddenCount)
+					hint := styleWriteTruncation.Width(outputWidth - 2).Render(truncMsg)
+					result.WriteString("\n")
+					result.WriteString(hint)
+				}
+				result.WriteString("\n")
+			}
+		}
+	}
+
 	// Check for diagnostics in output
 	hasDiagnostics := false
 	if t.output != "" && strings.Contains(t.output, "<diagnostics") {
@@ -340,7 +373,7 @@ func (t *ToolMessageItem) Render(width int) string {
 			diagContent := t.output[diagStart : diagEnd+len("</diagnostics>")]
 			rendered := renderDiagnostics(diagContent, outputWidth)
 			if rendered != "" {
-				if !isEditDiff {
+				if !isEditDiff && !isWriteFile {
 					result.WriteString("\n\n")
 				} else {
 					result.WriteString("\n")
@@ -351,8 +384,8 @@ func (t *ToolMessageItem) Render(width int) string {
 		}
 	}
 
-	// Render remaining output if not fully handled by diff/diagnostics
-	if t.output != "" && !isEditDiff && !hasDiagnostics {
+	// Render remaining output if not fully handled by diff/diagnostics/write
+	if t.output != "" && !isEditDiff && !isWriteFile && !hasDiagnostics {
 		result.WriteString("\n\n") // blank line between header and output
 
 		// Split output into lines
@@ -768,6 +801,69 @@ func renderCodeBlock(content, fileName string, width int) string {
 
 		// Apply code background with full-width fill
 		styledCode := styleCodeContent.
+			Width(codeWidth).
+			Render(codePart)
+
+		result = append(result, codeIndent+lipgloss.JoinHorizontal(lipgloss.Top, gutter, styledCode))
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// renderWriteBlock renders raw file content as a code block with line numbers
+// and syntax highlighting, using green-tinted background (matching diff insert style).
+func renderWriteBlock(content, fileName string, width int) string {
+	lines := strings.Split(content, "\n")
+
+	// Generate line numbers with zero-padded width
+	numDigits := len(fmt.Sprintf("%d", len(lines)))
+	if numDigits < 5 {
+		numDigits = 5
+	}
+
+	// Apply syntax highlighting
+	highlighted := syntaxHighlight(content, fileName)
+	highlightedLines := strings.Split(highlighted, "\n")
+
+	// Calculate widths (subtract 2 for the left indent)
+	gutterWidth := numDigits + 2 // line number + padding
+	codeWidth := width - gutterWidth - 2
+	if codeWidth < 10 {
+		codeWidth = 10
+	}
+
+	// Render each line: [indent] [gutter] [code with bg]
+	const codeIndent = "  " // 2-char indent to align with tool header
+	var result []string
+	for i, line := range lines {
+		// Format line number with leading zeros
+		numStr := fmt.Sprintf("%0*d", numDigits, i+1)
+		trimmed := strings.TrimLeft(numStr, "0")
+		if trimmed == "" {
+			trimmed = "0"
+		}
+		leadingZeros := numStr[:len(numStr)-len(trimmed)]
+
+		var gutterContent string
+		if leadingZeros != "" {
+			gutterContent = styleWriteLineNumZero.Render(leadingZeros) + trimmed
+		} else {
+			gutterContent = trimmed
+		}
+		gutter := styleWriteLineNum.
+			Width(gutterWidth).
+			Render(gutterContent)
+
+		// Get the highlighted code line (or fallback to raw)
+		var codePart string
+		if i < len(highlightedLines) {
+			codePart = highlightedLines[i]
+		} else {
+			codePart = line
+		}
+
+		// Apply green background with full-width fill
+		styledCode := styleWriteContent.
 			Width(codeWidth).
 			Render(codePart)
 
