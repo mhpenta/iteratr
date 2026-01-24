@@ -543,7 +543,7 @@ func (a *App) subscribeToEvents() tea.Cmd {
 
 		// Clean up when context is cancelled
 		<-a.ctx.Done()
-		sub.Unsubscribe()
+		_ = sub.Unsubscribe()
 		close(a.eventChan)
 
 		return nil

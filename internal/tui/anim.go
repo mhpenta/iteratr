@@ -222,7 +222,7 @@ func parseHexColor(hex string) (uint8, uint8, uint8) {
 	// Parse RGB values
 	var r, g, b uint8
 	if len(hex) == 6 {
-		fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
+		_, _ = fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
 	}
 
 	return r, g, b
