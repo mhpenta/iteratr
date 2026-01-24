@@ -116,13 +116,13 @@ func TestLogger_EnvVarLogLevel(t *testing.T) {
 	original := os.Getenv("ITERATR_LOG_LEVEL")
 	defer func() {
 		if original != "" {
-			os.Setenv("ITERATR_LOG_LEVEL", original)
+			_ = os.Setenv("ITERATR_LOG_LEVEL", original)
 		} else {
-			os.Unsetenv("ITERATR_LOG_LEVEL")
+			_ = os.Unsetenv("ITERATR_LOG_LEVEL")
 		}
 	}()
 
-	os.Setenv("ITERATR_LOG_LEVEL", "debug")
+	_ = os.Setenv("ITERATR_LOG_LEVEL", "debug")
 
 	l := New()
 	if l.level != LevelDebug {
@@ -137,23 +137,23 @@ func TestLogger_EnvVarLogFile(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 	tmpPath := tmpFile.Name()
-	tmpFile.Close()
-	defer os.Remove(tmpPath)
+	_ = tmpFile.Close()
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	// Save and restore original env var
 	original := os.Getenv("ITERATR_LOG_FILE")
 	defer func() {
 		if original != "" {
-			os.Setenv("ITERATR_LOG_FILE", original)
+			_ = os.Setenv("ITERATR_LOG_FILE", original)
 		} else {
-			os.Unsetenv("ITERATR_LOG_FILE")
+			_ = os.Unsetenv("ITERATR_LOG_FILE")
 		}
 	}()
 
-	os.Setenv("ITERATR_LOG_FILE", tmpPath)
+	_ = os.Setenv("ITERATR_LOG_FILE", tmpPath)
 
 	l := New()
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 
 	l.Info("test message")
 
@@ -174,19 +174,19 @@ func TestLogger_Close(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 	tmpPath := tmpFile.Name()
-	tmpFile.Close()
-	defer os.Remove(tmpPath)
+	_ = tmpFile.Close()
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	original := os.Getenv("ITERATR_LOG_FILE")
 	defer func() {
 		if original != "" {
-			os.Setenv("ITERATR_LOG_FILE", original)
+			_ = os.Setenv("ITERATR_LOG_FILE", original)
 		} else {
-			os.Unsetenv("ITERATR_LOG_FILE")
+			_ = os.Unsetenv("ITERATR_LOG_FILE")
 		}
 	}()
 
-	os.Setenv("ITERATR_LOG_FILE", tmpPath)
+	_ = os.Setenv("ITERATR_LOG_FILE", tmpPath)
 
 	l := New()
 	if err := l.Close(); err != nil {
