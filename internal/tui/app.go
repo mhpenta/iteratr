@@ -447,7 +447,12 @@ func (a *App) handleGlobalKeys(msg tea.KeyPressMsg) tea.Cmd {
 		a.sidebarVisible = !a.sidebarVisible
 		return nil
 	case "ctrl+n":
-		// Open note input modal (guards will be added in later tasks)
+		// Guard: don't open note input modal if another modal/dialog is visible
+		// This prevents modal stacking and ensures clean UI state
+		if a.dialog.IsVisible() || a.taskModal.IsVisible() || a.noteModal.IsVisible() || a.logsVisible {
+			return nil // No-op if any other modal/dialog is visible
+		}
+		// Open note input modal
 		return a.noteInputModal.Show()
 	}
 	return nil
