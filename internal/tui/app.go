@@ -452,6 +452,11 @@ func (a *App) handleGlobalKeys(msg tea.KeyPressMsg) tea.Cmd {
 		if a.dialog.IsVisible() || a.taskModal.IsVisible() || a.noteModal.IsVisible() || a.logsVisible {
 			return nil // No-op if any other modal/dialog is visible
 		}
+		// Guard: don't open note input modal if there's no active iteration
+		// Notes must be tagged to an iteration, so we need at least iteration 1
+		if a.iteration == 0 {
+			return nil // No-op if no iteration has started yet
+		}
 		// Open note input modal
 		return a.noteInputModal.Show()
 	}
