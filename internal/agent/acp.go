@@ -30,6 +30,20 @@ func newACPConn(stdin io.WriteCloser, stdout io.Reader) *acpConn {
 	}
 }
 
+// sendResponse sends a JSON-RPC 2.0 response to a server-initiated request.
+func (c *acpConn) sendResponse(id int, result any) error {
+	resp := jsonRPCResponseOut{
+		JSONRPC: "2.0",
+		ID:      id,
+		Result:  result,
+	}
+	logger.Debug("ACP response [%d]", id)
+	if err := c.encoder.Encode(resp); err != nil {
+		return fmt.Errorf("failed to encode response: %w", err)
+	}
+	return nil
+}
+
 // sendRequest sends a JSON-RPC 2.0 request and returns the assigned request ID.
 func (c *acpConn) sendRequest(method string, params any) (int, error) {
 	id := int(c.reqID.Add(1))
@@ -358,8 +372,43 @@ func (c *acpConn) prompt(ctx context.Context, sessionID, text string, onText fun
 			continue
 		}
 
-		// Skip other notifications
+		// Skip other notifications (no id, no method we handle)
 		if resp.ID == nil {
+			continue
+		}
+
+		// Handle server-initiated permission requests (auto-grant)
+		if resp.Method == "session/request_permission" {
+			var params permissionRequestParams
+			if err := json.Unmarshal(resp.Params, &params); err != nil {
+				logger.Warn("Failed to parse permission request: %v", err)
+				continue
+			}
+			// Find "always" option, fall back to first allow option
+			optionID := ""
+			for _, opt := range params.Options {
+				if opt.Kind == "allow_always" {
+					optionID = opt.OptionID
+					break
+				}
+			}
+			if optionID == "" {
+				for _, opt := range params.Options {
+					if opt.Kind == "allow_once" {
+						optionID = opt.OptionID
+						break
+					}
+				}
+			}
+			if optionID == "" && len(params.Options) > 0 {
+				optionID = params.Options[0].OptionID
+			}
+			logger.Debug("ACP auto-granting permission [%s] tool=%s option=%s", params.ToolCall.Title, params.ToolCall.ToolCallID, optionID)
+			if err := c.sendResponse(*resp.ID, permissionResponse{
+				Outcome: permissionOutcome{OptionID: optionID, Outcome: "selected"},
+			}); err != nil {
+				logger.Warn("Failed to send permission response: %v", err)
+			}
 			continue
 		}
 
@@ -562,4 +611,41 @@ type toolCallUpdate struct {
 type toolCallContent struct {
 	Type    string      `json:"type"`    // "content"
 	Content contentPart `json:"content"` // {type:"text", text:"output here"}
+}
+
+// JSON-RPC response sent from client to server (for server-initiated requests)
+type jsonRPCResponseOut struct {
+	JSONRPC string `json:"jsonrpc"`
+	ID      int    `json:"id"`
+	Result  any    `json:"result"`
+}
+
+// Permission request/response types (session/request_permission)
+type permissionRequestParams struct {
+	SessionID string             `json:"sessionId"`
+	ToolCall  permissionTool     `json:"toolCall"`
+	Options   []permissionOption `json:"options"`
+}
+
+type permissionTool struct {
+	ToolCallID string         `json:"toolCallId"`
+	Title      string         `json:"title"`
+	Kind       string         `json:"kind"`
+	Status     string         `json:"status"`
+	RawInput   map[string]any `json:"rawInput"`
+}
+
+type permissionOption struct {
+	OptionID string `json:"optionId"`
+	Kind     string `json:"kind"`
+	Name     string `json:"name"`
+}
+
+type permissionResponse struct {
+	Outcome permissionOutcome `json:"outcome"`
+}
+
+type permissionOutcome struct {
+	OptionID string `json:"optionId"`
+	Outcome  string `json:"outcome"` // "selected" or "cancelled"
 }

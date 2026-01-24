@@ -6,7 +6,7 @@
 | [managed-process-migration](./managed-process-migration.md) | Draft | Replace ACP with managed process for model selection |
 | [tui-beautification](./tui-beautification.md) | Complete | Modernize TUI with Crush patterns, Ultraviolet layouts, component interfaces |
 | [tui-beautification-cleanup](./tui-beautification-cleanup.md) | Optional | Minor cleanup: legacy Render() removal, taskIndex consistency |
-| [dummy-exploration](./dummy-exploration.md) | Draft | Practice spec for testing task workflow |
+| [test-spec](./test-spec.md) | Active | E2E test spec - validates TUI/task workflow with temp files |
 | [session-task-enhancements](./session-task-enhancements.md) | Draft | Task deps/priority, iteration history, snapshots, prompt improvements |
 | [state-snapshots](./state-snapshots.md) | Draft | KV snapshots for faster state loading (deferred from session-task-enhancements) |
 | [acp-migration](./acp-migration.md) | Draft | Migrate back to ACP protocol for opencode communication |
