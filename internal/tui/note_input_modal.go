@@ -49,6 +49,14 @@ func NewNoteInputModal() *NoteInputModal {
 	// This prevents confusion since ctrl+n opens the note modal globally
 	ta.KeyMap.LineNext = key.NewBinding(key.WithKeys("down"))
 
+	// Style textarea to match modal theme using default dark styles
+	// and customizing the cursor color to match our secondary brand color
+	styles := textarea.DefaultDarkStyles()
+	styles.Cursor.Color = lipgloss.Color(colorSecondary)
+	styles.Cursor.Shape = tea.CursorBlock
+	styles.Cursor.Blink = true
+	ta.SetStyles(styles)
+
 	// Define available note types
 	types := []string{"learning", "stuck", "tip", "decision"}
 
