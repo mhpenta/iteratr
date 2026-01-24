@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
 // NoteInputModal is an interactive modal for creating new notes.
@@ -84,4 +85,59 @@ func (m *NoteInputModal) View() string {
 func (m *NoteInputModal) renderButton() string {
 	buttonStyle := styleBadgeMuted.Copy()
 	return buttonStyle.Render("  Save Note  ")
+}
+
+// Draw renders the modal centered on the screen buffer.
+func (m *NoteInputModal) Draw(scr uv.Screen, area uv.Rectangle) {
+	if !m.visible {
+		return
+	}
+
+	modalWidth := m.width
+	modalHeight := m.height
+
+	// Ensure modal fits on screen with margins
+	if modalWidth > area.Dx()-4 {
+		modalWidth = area.Dx() - 4
+	}
+	if modalHeight > area.Dy()-4 {
+		modalHeight = area.Dy() - 4
+	}
+
+	// Ensure minimum dimensions
+	if modalWidth < 30 {
+		modalWidth = 30
+	}
+	if modalHeight < 8 {
+		modalHeight = 8
+	}
+
+	// Build modal content using View()
+	content := m.View()
+
+	// Style the modal with border and background
+	modalStyle := styleModalContainer.
+		Width(modalWidth).
+		Height(modalHeight)
+
+	modalContent := modalStyle.Render(content)
+
+	// Calculate center position
+	renderedWidth := lipgloss.Width(modalContent)
+	renderedHeight := lipgloss.Height(modalContent)
+	x := (area.Dx() - renderedWidth) / 2
+	y := (area.Dy() - renderedHeight) / 2
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+
+	// Draw modal centered on screen
+	modalArea := uv.Rectangle{
+		Min: uv.Position{X: area.Min.X + x, Y: area.Min.Y + y},
+		Max: uv.Position{X: area.Min.X + x + renderedWidth, Y: area.Min.Y + y + renderedHeight},
+	}
+	uv.NewStyledString(modalContent).Draw(scr, modalArea)
 }
