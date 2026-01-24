@@ -370,7 +370,12 @@ var taskListCmd = &cobra.Command{
 			if len(tasks) == 0 {
 				return
 			}
-			lines = append(lines, fmt.Sprintf("%s:", strings.Title(strings.ReplaceAll(status, "_", " "))))
+			// Capitalize first letter of status
+			statusLabel := strings.ReplaceAll(status, "_", " ")
+			if len(statusLabel) > 0 {
+				statusLabel = strings.ToUpper(statusLabel[:1]) + statusLabel[1:]
+			}
+			lines = append(lines, fmt.Sprintf("%s:", statusLabel))
 			for _, t := range tasks {
 				lines = append(lines, fmt.Sprintf("  [%s] %s", t.ID, t.Content))
 			}
