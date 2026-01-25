@@ -386,6 +386,12 @@ var (
 				BorderForeground(colorPrimary).
 				PaddingLeft(1)
 
+	// User message border (right-aligned with right border)
+	styleUserBorder = lipgloss.NewStyle().
+			Border(lipgloss.ThickBorder(), false, true, false, false). // Right border only
+			BorderForeground(colorSecondary).
+			PaddingRight(1)
+
 	// Panel styles (no borders - focus indicated by header color)
 	stylePanelTitle = lipgloss.NewStyle().
 			Foreground(colorSubtext0).

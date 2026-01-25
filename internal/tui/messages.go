@@ -49,6 +49,14 @@ type TextMessageItem struct {
 	cachedWidth  int
 }
 
+// UserMessageItem represents user text content.
+type UserMessageItem struct {
+	id           string
+	content      string
+	cachedRender string
+	cachedWidth  int
+}
+
 // ID returns the unique identifier for this text message.
 func (t *TextMessageItem) ID() string {
 	return t.id
@@ -93,6 +101,59 @@ func (t *TextMessageItem) Height() int {
 	// Count newlines in cached render
 	lines := 1
 	for _, ch := range t.cachedRender {
+		if ch == '\n' {
+			lines++
+		}
+	}
+	return lines
+}
+
+// ID returns the unique identifier for this user message.
+func (u *UserMessageItem) ID() string {
+	return u.id
+}
+
+// Render renders the user message at the given width.
+// Wraps text, applies user border (right border), right-aligns content, and caps width at min(width-2, 120).
+func (u *UserMessageItem) Render(width int) string {
+	// Return cached render if width matches
+	if u.cachedWidth == width && u.cachedRender != "" {
+		return u.cachedRender
+	}
+
+	// Cap effective width at min(width-2, 120) to prevent overly long lines
+	// Subtract 2 for the right border and padding added by styleUserBorder
+	effectiveWidth := width - 2
+	if effectiveWidth > 120 {
+		effectiveWidth = 120
+	}
+	if effectiveWidth < 1 {
+		effectiveWidth = 1
+	}
+
+	// Wrap text (plain text, no markdown for user messages)
+	wrapped := wrapText(u.content, effectiveWidth)
+
+	// Apply user border styling (right border + padding)
+	styled := styleUserBorder.Render(wrapped)
+
+	// Right-align the entire styled block
+	result := rightAlign(styled, width)
+
+	// Cache and return
+	u.cachedRender = result
+	u.cachedWidth = width
+	return result
+}
+
+// Height returns the number of lines this user message occupies.
+func (u *UserMessageItem) Height() int {
+	if u.cachedRender == "" {
+		return 0
+	}
+	// Count newlines in cached render
+	lines := 1
+	for _, ch := range u.cachedRender {
 		if ch == '\n' {
 			lines++
 		}
@@ -1117,7 +1178,7 @@ func renderDiagnostics(output string, width int) string {
 	// Extract content between tags
 	contentStart := strings.Index(output, ">")
 	contentEnd := strings.Index(output, "</diagnostics>")
-	if contentStart == -1 || contentEnd == -1 {
+	if contentStart == -1 || contentEnd == -1 || contentStart+1 > contentEnd {
 		return ""
 	}
 	content := strings.TrimSpace(output[contentStart+1 : contentEnd])
@@ -1204,6 +1265,32 @@ func truncateLine(line string, maxWidth int) string {
 		return line[:maxWidth-1] + "…"
 	}
 	return line[:maxWidth]
+}
+
+// rightAlign right-aligns a styled block of text to the given width.
+// The block may contain ANSI escape codes, so we use lipgloss.Width for accurate measurement.
+func rightAlign(content string, width int) string {
+	lines := strings.Split(content, "\n")
+	var result strings.Builder
+
+	for i, line := range lines {
+		if i > 0 {
+			result.WriteString("\n")
+		}
+
+		// Get the actual visual width (accounts for ANSI codes)
+		lineWidth := lipgloss.Width(line)
+
+		// Add padding to right-align
+		if lineWidth < width {
+			padding := strings.Repeat(" ", width-lineWidth)
+			result.WriteString(padding)
+		}
+
+		result.WriteString(line)
+	}
+
+	return result.String()
 }
 
 // syntaxHighlight applies syntax highlighting to source code and returns
