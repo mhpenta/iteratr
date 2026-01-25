@@ -158,6 +158,13 @@ func (n *noteScrollItem) renderNote() string {
 	return line
 }
 
+// Logo constants
+const (
+	logoHeight = 6 // Height of the logo box including borders and padding
+	logoText1  = "▀ ▀█▀ █▀▀ █▀█ ▄▀█ ▀█▀ █▀█"
+	logoText2  = "█  █  ██▄ █▀▄ █▀█  █  █▀▄"
+)
+
 // Sidebar displays tasks and notes in two sections.
 type Sidebar struct {
 	state            *session.State
@@ -281,18 +288,16 @@ func (s *Sidebar) drawTasksSection(scr uv.Screen, area uv.Rectangle) {
 	content := s.tasksScrollList.View()
 	DrawText(scr, inner, content)
 
-	// Draw scroll indicator if needed
-	if s.tasksScrollList.TotalLineCount() > s.tasksScrollList.height {
-		pct := s.tasksScrollList.ScrollPercent()
-		indicator := fmt.Sprintf(" %d%% ", int(pct*100))
-		indicatorArea := uv.Rect(
-			area.Max.X-len(indicator)-1,
-			area.Max.Y-1,
-			len(indicator),
-			1,
-		)
-		DrawStyled(scr, indicatorArea, styleScrollIndicator, indicator)
-	}
+	// Draw scroll indicator (always visible)
+	pct := s.tasksScrollList.ScrollPercent()
+	indicator := fmt.Sprintf(" %d%% ", int(pct*100))
+	indicatorArea := uv.Rect(
+		area.Max.X-len(indicator)-1,
+		area.Max.Y-1,
+		len(indicator),
+		1,
+	)
+	DrawStyled(scr, indicatorArea, styleScrollIndicator, indicator)
 }
 
 // drawNotesSection renders the notes section with header and viewport content.
@@ -307,17 +312,96 @@ func (s *Sidebar) drawNotesSection(scr uv.Screen, area uv.Rectangle) {
 	content := s.notesScrollList.View()
 	DrawText(scr, inner, content)
 
-	// Draw scroll indicator if needed
-	if s.notesScrollList.TotalLineCount() > s.notesScrollList.height {
-		pct := s.notesScrollList.ScrollPercent()
-		indicator := fmt.Sprintf(" %d%% ", int(pct*100))
-		indicatorArea := uv.Rect(
-			area.Max.X-len(indicator)-1,
-			area.Max.Y-1,
-			len(indicator),
-			1,
-		)
-		DrawStyled(scr, indicatorArea, styleScrollIndicator, indicator)
+	// Draw scroll indicator (always visible)
+	pct := s.notesScrollList.ScrollPercent()
+	indicator := fmt.Sprintf(" %d%% ", int(pct*100))
+	indicatorArea := uv.Rect(
+		area.Max.X-len(indicator)-1,
+		area.Max.Y-1,
+		len(indicator),
+		1,
+	)
+	DrawStyled(scr, indicatorArea, styleScrollIndicator, indicator)
+}
+
+// drawLogo renders the logo box at the top of the sidebar.
+func (s *Sidebar) drawLogo(scr uv.Screen, area uv.Rectangle) {
+	width := area.Dx()
+	if width < 10 {
+		return
+	}
+
+	// Calculate inner width (for content inside border)
+	innerWidth := width - 2 // Account for left/right border chars
+
+	// Build the box borders
+	topBorder := "╭" + strings.Repeat("─", innerWidth) + "╮"
+	bottomBorder := "╰" + strings.Repeat("─", innerWidth) + "╯"
+	emptyLine := "│" + strings.Repeat(" ", innerWidth) + "│"
+
+	// Style for borders (primary color)
+	borderStyle := lipgloss.NewStyle().Foreground(colorPrimary)
+
+	// Render logo text with gradient
+	renderGradientLine := func(text string) string {
+		textLen := len([]rune(text))
+		padding := (innerWidth - textLen) / 2
+		if padding < 0 {
+			padding = 0
+		}
+		rightPadding := innerWidth - textLen - padding
+		if rightPadding < 0 {
+			rightPadding = 0
+		}
+
+		// Build the line with gradient on the text
+		var result strings.Builder
+		result.WriteString(borderStyle.Render("│"))
+		result.WriteString(strings.Repeat(" ", padding))
+
+		// Apply gradient to each character
+		runes := []rune(text)
+		for i, r := range runes {
+			pos := float64(i) / float64(len(runes)-1)
+			if len(runes) == 1 {
+				pos = 0
+			}
+			color := interpolateColor(string(colorPrimary), string(colorSecondary), pos)
+			charStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+			result.WriteString(charStyle.Render(string(r)))
+		}
+
+		result.WriteString(strings.Repeat(" ", rightPadding))
+		result.WriteString(borderStyle.Render("│"))
+		return result.String()
+	}
+
+	// Draw each line
+	type lineData struct {
+		content    string
+		isGradient bool
+	}
+	lines := []lineData{
+		{topBorder, false},
+		{emptyLine, false},
+		{logoText1, true},
+		{logoText2, true},
+		{emptyLine, false},
+		{bottomBorder, false},
+	}
+
+	for i, line := range lines {
+		if area.Min.Y+i >= area.Max.Y {
+			break
+		}
+		lineArea := uv.Rect(area.Min.X, area.Min.Y+i, width, 1)
+		var styledLine string
+		if line.isGradient {
+			styledLine = renderGradientLine(line.content)
+		} else {
+			styledLine = borderStyle.Render(line.content)
+		}
+		uv.NewStyledString(styledLine).Draw(scr, lineArea)
 	}
 }
 
@@ -339,20 +423,28 @@ func (s *Sidebar) getTasks() []*session.Task {
 	return tasks
 }
 
-// Draw renders the sidebar to the screen buffer with tasks and notes sections.
+// Draw renders the sidebar to the screen buffer with logo, tasks, and notes sections.
 func (s *Sidebar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	// Guard against zero dimensions
 	if area.Dx() < 10 || area.Dy() < 5 {
 		return nil
 	}
 
-	// Split area vertically: Tasks (60%) | Notes (40%)
-	tasksHeight := int(float64(area.Dy()) * 0.6)
+	// Split area vertically: Logo (fixed) | Tasks (55%) | Notes (45%)
+	// First split off the logo area
+	logoArea, remainder := uv.SplitVertical(area, uv.Fixed(logoHeight))
+
+	// Then split remaining space between tasks and notes
+	remainingHeight := remainder.Dy()
+	tasksHeight := int(float64(remainingHeight) * 0.55)
 	if tasksHeight < 3 {
 		tasksHeight = 3
 	}
 
-	tasksArea, notesArea := uv.SplitVertical(area, uv.Fixed(tasksHeight))
+	tasksArea, notesArea := uv.SplitVertical(remainder, uv.Fixed(tasksHeight))
+
+	// Draw Logo section
+	s.drawLogo(scr, logoArea)
 
 	// Draw Tasks section
 	s.drawTasksSection(scr, tasksArea)
@@ -453,15 +545,20 @@ func (s *Sidebar) SetSize(width, height int) {
 	s.width = width
 	s.height = height
 
-	// Calculate section heights (Tasks 60%, Notes 40%)
-	tasksHeight := int(float64(height) * 0.6)
+	// Calculate section heights (Logo fixed, then Tasks 55%, Notes 45% of remainder)
+	remainingHeight := height - logoHeight
+	if remainingHeight < 5 {
+		remainingHeight = 5
+	}
+
+	tasksHeight := int(float64(remainingHeight) * 0.55)
 	if tasksHeight < 3 {
 		tasksHeight = 3
 	}
-	notesHeight := height - tasksHeight
+	notesHeight := remainingHeight - tasksHeight
 	if notesHeight < 2 {
 		notesHeight = 2
-		tasksHeight = height - notesHeight
+		tasksHeight = remainingHeight - notesHeight
 	}
 
 	// Account for panel header (1 line each)
@@ -596,16 +693,68 @@ func (s *Sidebar) Render() string {
 		return ""
 	}
 
-	// Calculate section heights (Tasks 60%, Notes 40%)
-	tasksHeight := int(float64(s.height) * 0.6)
+	// Calculate section heights (Logo fixed, then Tasks 55%, Notes 45% of remainder)
+	remainingHeight := s.height - logoHeight
+	if remainingHeight < 5 {
+		remainingHeight = 5
+	}
+
+	tasksHeight := int(float64(remainingHeight) * 0.55)
 	if tasksHeight < 3 {
 		tasksHeight = 3
 	}
-	notesHeight := s.height - tasksHeight
+	notesHeight := remainingHeight - tasksHeight
 	if notesHeight < 2 {
 		notesHeight = 2
-		tasksHeight = s.height - notesHeight
+		tasksHeight = remainingHeight - notesHeight
 	}
+
+	// Render logo section with gradient
+	borderStyle := lipgloss.NewStyle().Foreground(colorPrimary)
+	innerWidth := s.width - 2
+	topBorder := "╭" + strings.Repeat("─", innerWidth) + "╮"
+	bottomBorder := "╰" + strings.Repeat("─", innerWidth) + "╯"
+	emptyLine := "│" + strings.Repeat(" ", innerWidth) + "│"
+
+	renderGradientLine := func(text string) string {
+		textLen := len([]rune(text))
+		padding := (innerWidth - textLen) / 2
+		if padding < 0 {
+			padding = 0
+		}
+		rightPadding := innerWidth - textLen - padding
+		if rightPadding < 0 {
+			rightPadding = 0
+		}
+
+		var result strings.Builder
+		result.WriteString(borderStyle.Render("│"))
+		result.WriteString(strings.Repeat(" ", padding))
+
+		runes := []rune(text)
+		for i, r := range runes {
+			pos := float64(i) / float64(len(runes)-1)
+			if len(runes) == 1 {
+				pos = 0
+			}
+			color := interpolateColor(string(colorPrimary), string(colorSecondary), pos)
+			charStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+			result.WriteString(charStyle.Render(string(r)))
+		}
+
+		result.WriteString(strings.Repeat(" ", rightPadding))
+		result.WriteString(borderStyle.Render("│"))
+		return result.String()
+	}
+
+	logoBox := lipgloss.JoinVertical(lipgloss.Left,
+		borderStyle.Render(topBorder),
+		borderStyle.Render(emptyLine),
+		renderGradientLine(logoText1),
+		renderGradientLine(logoText2),
+		borderStyle.Render(emptyLine),
+		borderStyle.Render(bottomBorder),
+	)
 
 	// Render tasks section
 	tasksHeader := styleSidebarHeader.Width(s.width - 2).Render("Tasks")
@@ -620,7 +769,7 @@ func (s *Sidebar) Render() string {
 	notesBox := styleSidebarBorder.Width(s.width).Height(notesHeight).Render(notesSection)
 
 	// Join sections vertically
-	return lipgloss.JoinVertical(lipgloss.Left, tasksBox, notesBox)
+	return lipgloss.JoinVertical(lipgloss.Left, logoBox, tasksBox, notesBox)
 }
 
 // Legacy methods for backward compatibility
