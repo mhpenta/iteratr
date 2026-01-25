@@ -448,10 +448,9 @@ func (o *Orchestrator) processUserMessages() error {
 			logger.Info("Processing queued user message: %s", userMsg)
 
 			// Notify TUI that we're processing a queued message
-			// TODO: Uncomment when QueuedMessageProcessingMsg is defined in task TAS-21
-			// if o.tuiProgram != nil {
-			// 	o.tuiProgram.Send(tui.QueuedMessageProcessingMsg{Text: userMsg})
-			// }
+			if o.tuiProgram != nil {
+				o.tuiProgram.Send(tui.QueuedMessageProcessingMsg{Text: userMsg})
+			}
 
 			if err := o.runner.SendMessage(o.ctx, userMsg); err != nil {
 				logger.Error("Failed to send user message: %v", err)
