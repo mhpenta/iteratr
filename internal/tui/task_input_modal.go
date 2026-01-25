@@ -109,6 +109,59 @@ func (m *TaskInputModal) reset() {
 	m.textarea.Blur()
 }
 
+// cycleFocusForward moves focus to the next element in the cycle:
+// priority selector → textarea → submit button → priority selector (wraps)
+// Returns a command to focus the textarea if it becomes the active element.
+func (m *TaskInputModal) cycleFocusForward() tea.Cmd {
+	oldFocus := m.focus
+
+	switch m.focus {
+	case focusPrioritySelector:
+		m.focus = focusTextarea
+	case focusTextarea:
+		m.focus = focusSubmitButton
+	case focusSubmitButton:
+		m.focus = focusPrioritySelector
+	}
+
+	return m.updateTextareaFocus(oldFocus)
+}
+
+// cycleFocusBackward moves focus to the previous element in the cycle:
+// button → textarea → priority selector → button (wraps)
+// Returns a command to focus the textarea if it becomes the active element.
+func (m *TaskInputModal) cycleFocusBackward() tea.Cmd {
+	oldFocus := m.focus
+
+	switch m.focus {
+	case focusPrioritySelector:
+		m.focus = focusSubmitButton
+	case focusTextarea:
+		m.focus = focusPrioritySelector
+	case focusSubmitButton:
+		m.focus = focusTextarea
+	}
+
+	return m.updateTextareaFocus(oldFocus)
+}
+
+// updateTextareaFocus manages the textarea's focus/blur state based on focus changes.
+// If focus moved TO textarea, it calls Focus(). If focus moved AWAY from textarea, it calls Blur().
+// Returns the Focus() command if textarea should be focused, nil otherwise.
+func (m *TaskInputModal) updateTextareaFocus(oldFocus focusZone) tea.Cmd {
+	// Focus moved TO textarea
+	if m.focus == focusTextarea && oldFocus != focusTextarea {
+		return m.textarea.Focus()
+	}
+
+	// Focus moved AWAY from textarea
+	if m.focus != focusTextarea && oldFocus == focusTextarea {
+		m.textarea.Blur()
+	}
+
+	return nil
+}
+
 // cyclePriorityForward cycles to the next priority level in the priorities array.
 // Wraps around from the last priority (backlog) back to the first (critical).
 func (m *TaskInputModal) cyclePriorityForward() {
@@ -149,6 +202,12 @@ func (m *TaskInputModal) Update(msg tea.Msg) tea.Cmd {
 			// Return a function that creates the CreateTaskMsg
 			// The iteration will be set by App when it receives this
 			return m.submit(content)
+		case "tab":
+			// Tab cycles focus forward: priority selector → textarea → button
+			return m.cycleFocusForward()
+		case "shift+tab":
+			// Shift+Tab cycles focus backward: button → textarea → priority selector
+			return m.cycleFocusBackward()
 		case "left", "right":
 			// Left/Right arrows when priority selector is focused cycles through priority levels
 			if m.focus == focusPrioritySelector {
