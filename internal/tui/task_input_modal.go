@@ -135,3 +135,82 @@ func (m *TaskInputModal) Update(msg tea.Msg) tea.Cmd {
 
 	return nil
 }
+
+// View renders the modal content (for testing and integration).
+// Returns the modal content as a string that will be styled by Draw().
+func (m *TaskInputModal) View() string {
+	if !m.visible {
+		return ""
+	}
+
+	var sections []string
+
+	// Title
+	title := renderModalTitle("New Task", m.width-4)
+	sections = append(sections, title)
+	sections = append(sections, "")
+
+	// Textarea (priority badges and button will be added in later tasks)
+	sections = append(sections, m.textarea.View())
+	sections = append(sections, "")
+
+	// Hint bar placeholder (will be populated in later task)
+	sections = append(sections, "")
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+// Draw renders the modal centered on the screen buffer.
+func (m *TaskInputModal) Draw(scr uv.Screen, area uv.Rectangle) {
+	if !m.visible {
+		return
+	}
+
+	modalWidth := m.width
+	modalHeight := m.height
+
+	// Ensure modal fits on screen with margins
+	if modalWidth > area.Dx()-4 {
+		modalWidth = area.Dx() - 4
+	}
+	if modalHeight > area.Dy()-4 {
+		modalHeight = area.Dy() - 4
+	}
+
+	// Ensure minimum dimensions
+	if modalWidth < 30 {
+		modalWidth = 30
+	}
+	if modalHeight < 8 {
+		modalHeight = 8
+	}
+
+	// Build modal content using View()
+	content := m.View()
+
+	// Style the modal with border and background
+	modalStyle := styleModalContainer.
+		Width(modalWidth).
+		Height(modalHeight)
+
+	modalContent := modalStyle.Render(content)
+
+	// Calculate center position
+	renderedWidth := lipgloss.Width(modalContent)
+	renderedHeight := lipgloss.Height(modalContent)
+	x := (area.Dx() - renderedWidth) / 2
+	y := (area.Dy() - renderedHeight) / 2
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+
+	// Draw modal centered on screen
+	modalArea := uv.Rectangle{
+		Min: uv.Position{X: area.Min.X + x, Y: area.Min.Y + y},
+		Max: uv.Position{X: area.Min.X + x + renderedWidth, Y: area.Min.Y + y + renderedHeight},
+	}
+	uv.NewStyledString(modalContent).Draw(scr, modalArea)
+}

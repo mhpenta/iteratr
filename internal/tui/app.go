@@ -600,6 +600,9 @@ func (a *App) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	if a.noteInputModal.IsVisible() {
 		a.noteInputModal.Draw(scr, area)
 	}
+	if a.taskInputModal.IsVisible() {
+		a.taskInputModal.Draw(scr, area)
+	}
 	if a.dialog.IsVisible() {
 		a.dialog.Draw(scr, area)
 	}
