@@ -106,3 +106,22 @@ Use Lipgloss for styling and flexbox-like content composition:
 - `lipgloss.NewStyle()` - Create styled text with colors, borders, padding
 
 Query lipgloss resource for styling: `btca ask -r lipgloss -q "How do I create a styled box with borders and padding?"`
+
+### TUI Shutdown and Terminal Restoration
+
+Bubbletea v2 handles terminal restoration automatically. Follow these rules to avoid corrupting terminal state:
+
+**Do:**
+- Use `tea.WithContext(ctx)` when creating the program - enables graceful context-based shutdown
+- Return `tea.Quit` from Update to exit - Bubbletea restores terminal automatically
+- Let Bubbletea handle SIGINT/SIGTERM - it has built-in signal handling
+
+**Don't:**
+- Write to stdout/stderr during or after TUI shutdown - corrupts terminal restoration
+- Create separate signal handlers that race with Bubbletea's built-in handling
+- Use manual escape sequences for terminal restoration - Bubbletea handles this
+- Let subprocesses inherit stderr (`cmd.Stderr = os.Stderr`) - they can write during shutdown
+
+**Error handling during shutdown:**
+- Use logger instead of `fmt.Fprintf(os.Stderr, ...)` for errors in shutdown paths
+- Check `tea.ErrInterrupted` as expected (not an error) when program exits via SIGINT
