@@ -67,6 +67,7 @@ IMPORTANT: You MUST use the iteratr tool via Bash for ALL task management. Do NO
 
 - **ONE TASK per iteration** - complete it fully before stopping
 - **LOAD ALL SPEC TASKS**: Every unchecked task in the spec MUST exist in the task queue
+- **RESPECT USER-ADDED TASKS**: Tasks added by the user during the session are valid work items - do NOT cancel or remove them just because they aren't in the spec
 - **ALWAYS use iteratr tool**: All task management via ` + "`" + `iteratr tool` + "`" + ` commands - never use other todo/task tools
 - **Test before completing** - verify changes work
 - **Commit before completing** - always commit changes before marking a task completed
