@@ -164,6 +164,52 @@ func (m *TaskInputModal) submit(content string) tea.Cmd {
 	}
 }
 
+// renderPriorityBadges renders the row of priority badges with the active priority highlighted.
+// When the priority selector is focused, the active badge is highlighted with primary color.
+// When unfocused, the active badge uses the standard priority-specific color.
+func (m *TaskInputModal) renderPriorityBadges() string {
+	var badges []string
+
+	for i, priority := range priorities {
+		isActive := i == m.priorityIndex
+		var badge lipgloss.Style
+		text := priority.emoji + " " + priority.label
+
+		if isActive {
+			if m.focus == focusPrioritySelector {
+				// Active and focused: use primary color
+				badge = styleBadge.Copy().
+					Foreground(colorTextBright).
+					Background(colorPrimary)
+			} else {
+				// Active but not focused: use priority-specific color
+				switch priority.value {
+				case 0: // critical
+					badge = styleBadgeError
+				case 1: // high
+					badge = styleBadgeWarning
+				case 2: // medium
+					badge = styleBadgeInfo
+				case 3: // low
+					badge = styleBadgeMuted
+				case 4: // backlog
+					badge = styleBadgeMuted.Faint(true)
+				default:
+					badge = styleBadgeMuted
+				}
+			}
+		} else {
+			// Inactive: muted
+			badge = styleBadgeMuted
+		}
+
+		badges = append(badges, badge.Render(text))
+	}
+
+	// Join badges with spaces
+	return strings.Join(badges, " ")
+}
+
 // View renders the modal content (for testing and integration).
 // Returns the modal content as a string that will be styled by Draw().
 func (m *TaskInputModal) View() string {
@@ -178,7 +224,12 @@ func (m *TaskInputModal) View() string {
 	sections = append(sections, title)
 	sections = append(sections, "")
 
-	// Textarea (priority badges and button will be added in later tasks)
+	// Priority selector badges row
+	priorityBadges := m.renderPriorityBadges()
+	sections = append(sections, priorityBadges)
+	sections = append(sections, "")
+
+	// Textarea
 	sections = append(sections, m.textarea.View())
 	sections = append(sections, "")
 
