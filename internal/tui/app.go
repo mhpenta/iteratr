@@ -183,15 +183,27 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case QueuedMessageProcessingMsg:
-		// Orchestrator started processing a queued message - decrement queue depth
+		// User message delivered - show in viewport now
 		a.queueDepth--
 		if a.queueDepth < 0 {
 			a.queueDepth = 0
 		}
-		if a.dashboard != nil {
-			return a, a.dashboard.SetQueueDepth(a.queueDepth)
+
+		var cmds []tea.Cmd
+
+		// Append user message to viewport at the moment agent starts processing it
+		if a.dashboard != nil && a.dashboard.agentOutput != nil {
+			cmd := a.dashboard.agentOutput.AppendUserMessage(msg.Text)
+			cmds = append(cmds, cmd)
 		}
-		return a, nil
+
+		// Update queue depth display
+		if a.dashboard != nil {
+			cmd := a.dashboard.SetQueueDepth(a.queueDepth)
+			cmds = append(cmds, cmd)
+		}
+
+		return a, tea.Batch(cmds...)
 
 	case OpenTaskModalMsg:
 		// Open task modal with the selected task
