@@ -8,12 +8,17 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+// focusPrioritySelector is the focusZone value for the priority selector in TaskInputModal.
+// We reuse the focusTypeSelector value since they serve the same role (first selector in modal).
+const focusPrioritySelector = focusTypeSelector
+
 // TaskInputModal is an interactive modal for creating new tasks.
 // It displays a textarea for content input, a priority selector, and allows the user to submit tasks.
 type TaskInputModal struct {
 	visible       bool
 	textarea      textarea.Model // Bubbles v2 textarea
 	priorityIndex int            // Current selected priority (0-4)
+	focus         focusZone      // Which UI element currently has keyboard focus
 	width         int
 	height        int
 	buttonArea    uv.Rectangle // Hit area for mouse click on submit button
@@ -47,7 +52,8 @@ func NewTaskInputModal() *TaskInputModal {
 	return &TaskInputModal{
 		visible:       false,
 		textarea:      ta,
-		priorityIndex: 2, // Default to medium
+		priorityIndex: 2,             // Default to medium
+		focus:         focusTextarea, // Start with textarea focused
 		width:         60,
 		height:        18, // Slightly taller than note modal to fit priority row
 	}
@@ -61,6 +67,7 @@ func (m *TaskInputModal) IsVisible() bool {
 // Show makes the modal visible and focuses the textarea.
 func (m *TaskInputModal) Show() tea.Cmd {
 	m.visible = true
+	m.focus = focusTextarea
 	return m.textarea.Focus()
 }
 
@@ -78,6 +85,9 @@ func (m *TaskInputModal) reset() {
 
 	// Reset priority to default (medium)
 	m.priorityIndex = 2
+
+	// Reset focus to textarea (default starting position)
+	m.focus = focusTextarea
 
 	// Blur the textarea to reset its internal state
 	m.textarea.Blur()
