@@ -291,6 +291,35 @@ func (m *TaskInputModal) renderPriorityBadges() string {
 	return strings.Join(badges, " ")
 }
 
+// renderButton renders the submit button in its current state with appropriate styling.
+// Three states:
+// - Focused: highlighted with primary color background
+// - Unfocused: muted with dim background
+// - Disabled: muted and visually dimmed (when content is empty)
+func (m *TaskInputModal) renderButton() string {
+	content := strings.TrimSpace(m.textarea.Value())
+	isEmpty := content == ""
+
+	var buttonStyle lipgloss.Style
+
+	// Disabled state: content is empty
+	if isEmpty {
+		buttonStyle = styleBadgeMuted.Copy().
+			Foreground(colorSubtext0). // Dimmed text
+			Background(colorSurface0)  // Very subtle background
+	} else if m.focus == focusSubmitButton {
+		// Focused state: highlighted with primary color
+		buttonStyle = styleBadge.Copy().
+			Foreground(colorTextBright). // Bright text
+			Background(colorPrimary)     // Primary brand color
+	} else {
+		// Unfocused state: standard muted style
+		buttonStyle = styleBadgeMuted.Copy()
+	}
+
+	return buttonStyle.Render("  Add Task  ")
+}
+
 // View renders the modal content (for testing and integration).
 // Returns the modal content as a string that will be styled by Draw().
 func (m *TaskInputModal) View() string {
@@ -312,6 +341,12 @@ func (m *TaskInputModal) View() string {
 
 	// Textarea
 	sections = append(sections, m.textarea.View())
+	sections = append(sections, "")
+
+	// Submit button (right-aligned)
+	button := m.renderButton()
+	buttonLine := lipgloss.NewStyle().Width(m.width - 4).Align(lipgloss.Right).Render(button)
+	sections = append(sections, buttonLine)
 	sections = append(sections, "")
 
 	// Hint bar placeholder (will be populated in later task)
