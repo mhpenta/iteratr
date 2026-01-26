@@ -8,6 +8,7 @@ import (
 
 	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/iteratr/internal/orchestrator"
+	"github.com/mark3labs/iteratr/internal/tui/wizard"
 	"github.com/spf13/cobra"
 )
 
@@ -47,6 +48,31 @@ func init() {
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
+	// Run wizard if no spec provided and not headless
+	if buildFlags.spec == "" && !buildFlags.headless {
+		logger.Info("No spec file provided, launching wizard...")
+		result, err := wizard.RunWizard()
+		if err != nil {
+			return fmt.Errorf("wizard failed: %w", err)
+		}
+
+		// Apply wizard results to buildFlags
+		buildFlags.spec = result.SpecPath
+		buildFlags.model = result.Model
+		buildFlags.name = result.SessionName
+		buildFlags.iterations = result.Iterations
+
+		// Write template to temp file if it was edited
+		if result.Template != "" {
+			// For now, we'll use the template directly via a future orchestrator enhancement
+			// The template temp file handling will be implemented in a later task
+			buildFlags.template = "" // Will be enhanced later
+		}
+
+		logger.Info("Wizard completed: spec=%s, model=%s, session=%s, iterations=%d",
+			result.SpecPath, result.Model, result.SessionName, result.Iterations)
+	}
+
 	// Determine spec path
 	specPath := buildFlags.spec
 	if specPath == "" {
@@ -55,7 +81,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		if _, err := os.Stat(defaultSpec); err == nil {
 			specPath = defaultSpec
 		} else {
-			return fmt.Errorf("no spec file found, use --spec to specify path")
+			return fmt.Errorf("no spec file found, use --spec to specify path or run without --headless to use wizard")
 		}
 	}
 
