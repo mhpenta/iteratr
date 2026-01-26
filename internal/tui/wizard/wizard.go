@@ -264,7 +264,7 @@ func (m *WizardModel) View() tea.View {
 	return view
 }
 
-// renderModal wraps the step content in a modal container with title.
+// renderModal wraps the step content in a modal container with title, buttons, and step indicator.
 func (m *WizardModel) renderModal(stepContent string) string {
 	var sections []string
 
@@ -281,6 +281,13 @@ func (m *WizardModel) renderModal(stepContent string) string {
 
 	// Step content
 	sections = append(sections, stepContent)
+
+	// Add spacing before buttons
+	sections = append(sections, "")
+
+	// Add button bar based on current step
+	buttonBar := m.createButtonBar()
+	sections = append(sections, buttonBar)
 
 	// Join all sections
 	content := strings.Join(sections, "\n")
@@ -306,6 +313,70 @@ func (m *WizardModel) renderModal(stepContent string) string {
 		lipgloss.Center, lipgloss.Center,
 		modalContent,
 	)
+}
+
+// createButtonBar creates the button bar for the current step.
+// Buttons are context-aware based on step and validation state.
+func (m *WizardModel) createButtonBar() string {
+	modalWidth := m.width - 10
+	if modalWidth < 60 {
+		modalWidth = 60
+	}
+	if modalWidth > 100 {
+		modalWidth = 100
+	}
+
+	var buttons []Button
+	nextLabel := "Next →"
+
+	// Determine next button label and validation state
+	isValid := m.isStepValid()
+
+	switch m.step {
+	case 0:
+		// First step: Cancel + Next
+		buttons = CreateCancelNextButtons(isValid, nextLabel)
+	case 3:
+		// Last step: Back + Finish
+		nextLabel = "Finish"
+		buttons = CreateBackNextButtons(true, isValid, nextLabel)
+	default:
+		// Middle steps: Back + Next
+		buttons = CreateBackNextButtons(true, isValid, nextLabel)
+	}
+
+	bar := NewButtonBar(buttons)
+	bar.SetWidth(modalWidth)
+	return bar.Render()
+}
+
+// isStepValid checks if the current step has valid data.
+// Used to enable/disable the Next button.
+func (m *WizardModel) isStepValid() bool {
+	switch m.step {
+	case 0:
+		// File picker: valid if a file (not directory) is selected
+		if m.filePickerStep != nil {
+			return m.filePickerStep.SelectedPath() != ""
+		}
+		return false
+	case 1:
+		// Model selector: valid if a model is selected and not loading/error
+		if m.modelSelectorStep != nil {
+			return m.modelSelectorStep.SelectedModel() != ""
+		}
+		return false
+	case 2:
+		// Template editor: always valid (can have empty template)
+		return true
+	case 3:
+		// Config: valid if all inputs pass validation
+		if m.configStep != nil {
+			return m.configStep.IsValid()
+		}
+		return false
+	}
+	return false
 }
 
 // isComplete checks if all required steps have valid data.
