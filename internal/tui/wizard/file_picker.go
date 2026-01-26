@@ -76,8 +76,8 @@ func NewFilePickerStep() *FilePickerStep {
 	fp.scrollList.SetAutoScroll(false) // Manual navigation for file picker
 	fp.scrollList.SetFocused(true)
 
-	// Load initial directory
-	fp.loadDirectory(cwd)
+	// Load initial directory (ignore error, will show empty state)
+	_ = fp.loadDirectory(cwd)
 
 	return fp
 }
@@ -200,8 +200,8 @@ func (f *FilePickerStep) Update(msg tea.Msg) tea.Cmd {
 			if f.selectedIdx >= 0 && f.selectedIdx < len(f.items) {
 				item := f.items[f.selectedIdx]
 				if item.isDir {
-					// Navigate into directory
-					f.loadDirectory(item.path)
+					// Navigate into directory (ignore error, UI will show current state)
+					_ = f.loadDirectory(item.path)
 				} else {
 					// File selected - this will be handled by parent wizard
 					return func() tea.Msg {
@@ -213,7 +213,8 @@ func (f *FilePickerStep) Update(msg tea.Msg) tea.Cmd {
 			// Go up one directory level
 			parentPath := filepath.Dir(f.currentPath)
 			if parentPath != f.currentPath {
-				f.loadDirectory(parentPath)
+				// Ignore error, UI will maintain current state if navigation fails
+				_ = f.loadDirectory(parentPath)
 			}
 		}
 	}
