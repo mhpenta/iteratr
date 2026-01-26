@@ -6,8 +6,10 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
+	lipgloss "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // focusPrioritySelector is the focusZone value for the priority selector in TaskInputModal.
@@ -58,8 +60,9 @@ func NewTaskInputModal() *TaskInputModal {
 
 	// Style textarea to match modal theme using default dark styles
 	// and customizing the cursor color to match our secondary brand color
+	t := theme.Current()
 	styles := textarea.DefaultDarkStyles()
-	styles.Cursor.Color = lipgloss.Color(colorSecondary)
+	styles.Cursor.Color = lipgloss.Color(t.Secondary)
 	styles.Cursor.Shape = tea.CursorBlock
 	styles.Cursor.Blink = true
 	ta.SetStyles(styles)
@@ -260,6 +263,8 @@ func (m *TaskInputModal) submit(content string) tea.Cmd {
 // When the priority selector is focused, the active badge is highlighted with primary color.
 // When unfocused, the active badge uses the standard priority-specific color.
 func (m *TaskInputModal) renderPriorityBadges() string {
+	t := theme.Current()
+	s := t.S()
 	var badges []string
 
 	for i, priority := range priorities {
@@ -270,29 +275,29 @@ func (m *TaskInputModal) renderPriorityBadges() string {
 		if isActive {
 			if m.focus == focusPrioritySelector {
 				// Active and focused: use primary color
-				badge = styleBadge.
-					Foreground(colorTextBright).
-					Background(colorPrimary)
+				badge = s.Badge.
+					Foreground(lipgloss.Color(t.FgBright)).
+					Background(lipgloss.Color(t.Primary))
 			} else {
 				// Active but not focused: use priority-specific color
 				switch priority.value {
 				case 0: // critical
-					badge = styleBadgeError
+					badge = s.BadgeError
 				case 1: // high
-					badge = styleBadgeWarning
+					badge = s.BadgeWarning
 				case 2: // medium
-					badge = styleBadgeInfo
+					badge = s.BadgeInfo
 				case 3: // low
-					badge = styleBadgeMuted
+					badge = s.BadgeMuted
 				case 4: // backlog
-					badge = styleBadgeMuted.Faint(true)
+					badge = s.BadgeMuted.Faint(true)
 				default:
-					badge = styleBadgeMuted
+					badge = s.BadgeMuted
 				}
 			}
 		} else {
 			// Inactive: muted
-			badge = styleBadgeMuted
+			badge = s.BadgeMuted
 		}
 
 		badges = append(badges, badge.Render(text))
@@ -308,6 +313,8 @@ func (m *TaskInputModal) renderPriorityBadges() string {
 // - Unfocused: muted with dim background
 // - Disabled: muted and visually dimmed (when content is empty)
 func (m *TaskInputModal) renderButton() string {
+	t := theme.Current()
+	s := t.S()
 	content := strings.TrimSpace(m.textarea.Value())
 	isEmpty := content == ""
 
@@ -315,17 +322,17 @@ func (m *TaskInputModal) renderButton() string {
 
 	// Disabled state: content is empty
 	if isEmpty {
-		buttonStyle = styleBadgeMuted.
-			Foreground(colorSubtext0). // Dimmed text
-			Background(colorSurface0)  // Very subtle background
+		buttonStyle = s.BadgeMuted.
+			Foreground(lipgloss.Color(t.FgMuted)).   // Dimmed text
+			Background(lipgloss.Color(t.BgSurface0)) // Very subtle background
 	} else if m.focus == focusSubmitButton {
 		// Focused state: highlighted with primary color
-		buttonStyle = styleBadge.
-			Foreground(colorTextBright). // Bright text
-			Background(colorPrimary)     // Primary brand color
+		buttonStyle = s.Badge.
+			Foreground(lipgloss.Color(t.FgBright)). // Bright text
+			Background(lipgloss.Color(t.Primary))   // Primary brand color
 	} else {
 		// Unfocused state: standard muted style
-		buttonStyle = styleBadgeMuted
+		buttonStyle = s.BadgeMuted
 	}
 
 	return buttonStyle.Render("  Add Task  ")
@@ -361,14 +368,15 @@ func (m *TaskInputModal) View() string {
 	sections = append(sections, "")
 
 	// Hint bar at bottom with keyboard shortcuts
-	hintBar := styleHintKey.Render("tab") + " " +
-		styleHintDesc.Render("cycle focus") + " " +
-		styleHintSeparator.Render("•") + " " +
-		styleHintKey.Render("ctrl+enter") + " " +
-		styleHintDesc.Render("submit") + " " +
-		styleHintSeparator.Render("•") + " " +
-		styleHintKey.Render("esc") + " " +
-		styleHintDesc.Render("close")
+	s := theme.Current().S()
+	hintBar := s.HintKey.Render("tab") + " " +
+		s.HintDesc.Render("cycle focus") + " " +
+		s.HintSeparator.Render("•") + " " +
+		s.HintKey.Render("ctrl+enter") + " " +
+		s.HintDesc.Render("submit") + " " +
+		s.HintSeparator.Render("•") + " " +
+		s.HintKey.Render("esc") + " " +
+		s.HintDesc.Render("close")
 	hintText := lipgloss.NewStyle().Width(m.width - 4).Align(lipgloss.Center).Render(hintBar)
 	sections = append(sections, hintText)
 
@@ -404,7 +412,8 @@ func (m *TaskInputModal) Draw(scr uv.Screen, area uv.Rectangle) {
 	content := m.View()
 
 	// Style the modal with border and background
-	modalStyle := styleModalContainer.
+	s := theme.Current().S()
+	modalStyle := s.ModalContainer.
 		Width(modalWidth).
 		Height(modalHeight)
 
