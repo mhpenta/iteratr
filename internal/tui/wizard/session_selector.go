@@ -330,26 +330,11 @@ func (s *SessionSelectorStep) handleConfirmResetInput(keyMsg tea.KeyPressMsg) te
 	switch keyMsg.String() {
 	case "y", "Y":
 		// Yes - reset and resume session
-		// TODO: Call store.ResetSession() here (TAS-12)
-		return func() tea.Msg {
-			return SessionSelectedMsg{
-				Name:        s.selectedSession.info.Name,
-				IsNew:       false,
-				ShouldReset: true,
-			}
-		}
+		return s.resetAndResume()
 
 	case "n", "N":
 		// No - don't reset, just resume
-		// For completed sessions, call SessionRestart() to set Complete = false
-		// TODO: Call store.SessionRestart() here if session was complete (TAS-12)
-		return func() tea.Msg {
-			return SessionSelectedMsg{
-				Name:        s.selectedSession.info.Name,
-				IsNew:       false,
-				ShouldReset: false,
-			}
-		}
+		return s.resumeWithoutReset()
 
 	case "esc":
 		// Cancel - go back to listing
@@ -360,13 +345,7 @@ func (s *SessionSelectorStep) handleConfirmResetInput(keyMsg tea.KeyPressMsg) te
 
 	case "enter":
 		// Default is No
-		return func() tea.Msg {
-			return SessionSelectedMsg{
-				Name:        s.selectedSession.info.Name,
-				IsNew:       false,
-				ShouldReset: false,
-			}
-		}
+		return s.resumeWithoutReset()
 	}
 
 	return nil
@@ -538,4 +517,45 @@ type SessionSelectedMsg struct {
 	Name        string // Session name (empty if IsNew)
 	IsNew       bool   // True if "New Session" selected
 	ShouldReset bool   // True if user chose to reset tasks/notes
+}
+
+// resetAndResume resets the session and returns a command to resume it.
+func (s *SessionSelectorStep) resetAndResume() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Reset the session (purge all events)
+		if err := s.sessionStore.ResetSession(ctx, s.selectedSession.info.Name); err != nil {
+			return SessionsErrorMsg{err: err}
+		}
+
+		return SessionSelectedMsg{
+			Name:        s.selectedSession.info.Name,
+			IsNew:       false,
+			ShouldReset: true,
+		}
+	}
+}
+
+// resumeWithoutReset resumes the session without resetting.
+// If the session was completed, calls SessionRestart() to set Complete = false.
+func (s *SessionSelectorStep) resumeWithoutReset() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// If session was complete, restart it
+		if s.selectedSession.info.Complete {
+			if err := s.sessionStore.SessionRestart(ctx, s.selectedSession.info.Name); err != nil {
+				return SessionsErrorMsg{err: err}
+			}
+		}
+
+		return SessionSelectedMsg{
+			Name:        s.selectedSession.info.Name,
+			IsNew:       false,
+			ShouldReset: false,
+		}
+	}
 }
