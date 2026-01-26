@@ -214,6 +214,11 @@ func (t *Theme) buildStyles() *Styles {
 		Border(lipgloss.ThickBorder(), false, true, false, false). // Right border only
 		BorderForeground(lipgloss.Color(t.Secondary)).
 		PaddingRight(1)
+	s.IterationDivider = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(t.FgMuted)).
+		Bold(true).
+		MarginTop(1).
+		MarginBottom(1)
 
 	// Input styles (bubbles textinput)
 	s.TextInputStyles = t.buildTextInputStyles()

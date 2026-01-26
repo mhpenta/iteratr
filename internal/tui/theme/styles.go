@@ -144,8 +144,9 @@ type Styles struct {
 	PanelRuleFocused  lipgloss.Style
 
 	// Message styles
-	AssistantBorder lipgloss.Style
-	UserBorder      lipgloss.Style
+	AssistantBorder  lipgloss.Style
+	UserBorder       lipgloss.Style
+	IterationDivider lipgloss.Style
 
 	// Input styles
 	TextInputStyles textinput.Styles

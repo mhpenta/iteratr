@@ -661,14 +661,8 @@ func (d *DividerMessageItem) Render(width int) string {
 	line := strings.Repeat("─", lineWidth)
 	divider := line + label + line
 
-	// Style the divider
-	style := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(theme.Current().FgMuted)).
-		Bold(true).
-		MarginTop(1).
-		MarginBottom(1)
-
-	result := style.Render(divider)
+	// Style the divider using theme
+	result := theme.Current().S().IterationDivider.Render(divider)
 
 	// Cache and return
 	d.cachedRender = result
