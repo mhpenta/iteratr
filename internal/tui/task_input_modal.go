@@ -19,13 +19,13 @@ const focusPrioritySelector = focusTypeSelector
 var priorities = []struct {
 	value int
 	label string
-	emoji string
+	icon  string
 }{
-	{0, "critical", "🔴"},
-	{1, "high", "🟠"},
-	{2, "medium", "🟡"},
-	{3, "low", "🟢"},
-	{4, "backlog", "⚪"},
+	{0, "critical", "●"},
+	{1, "high", "●"},
+	{2, "medium", "●"},
+	{3, "low", "●"},
+	{4, "backlog", "○"},
 }
 
 // TaskInputModal is an interactive modal for creating new tasks.
@@ -265,7 +265,7 @@ func (m *TaskInputModal) renderPriorityBadges() string {
 	for i, priority := range priorities {
 		isActive := i == m.priorityIndex
 		var badge lipgloss.Style
-		text := priority.emoji + " " + priority.label
+		text := priority.icon + " " + priority.label
 
 		if isActive {
 			if m.focus == focusPrioritySelector {

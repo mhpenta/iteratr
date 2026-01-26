@@ -124,19 +124,19 @@ func (n *noteScrollItem) renderNote() string {
 
 	switch note.Type {
 	case "learning":
-		indicator = "💡"
-		indicatorStyle = styleStatusCompleted // Green-ish
+		indicator = "*"
+		indicatorStyle = styleStatusCompleted // Green
 	case "stuck":
-		indicator = "🚫"
+		indicator = "!"
 		indicatorStyle = styleStatusBlocked // Red
 	case "tip":
-		indicator = "💬"
+		indicator = "›"
 		indicatorStyle = styleStatusInProgress // Yellow
 	case "decision":
-		indicator = "⚡"
+		indicator = "◇"
 		indicatorStyle = styleStatusRemaining // Blue
 	default:
-		indicator = "📝"
+		indicator = "≡"
 		indicatorStyle = styleDim
 	}
 

@@ -154,19 +154,19 @@ func (m *NoteModal) renderTypeBadge(noteType string) string {
 	switch noteType {
 	case "learning":
 		badge = styleBadgeSuccess
-		text = "💡 learning"
+		text = "* learning"
 	case "stuck":
 		badge = styleBadgeError
-		text = "🚫 stuck"
+		text = "! stuck"
 	case "tip":
 		badge = styleBadgeWarning
-		text = "💬 tip"
+		text = "› tip"
 	case "decision":
 		badge = styleBadgeInfo
-		text = "⚡ decision"
+		text = "◇ decision"
 	default:
 		badge = styleBadgeMuted
-		text = "📝 " + noteType
+		text = "≡ " + noteType
 	}
 
 	return badge.Render(text)

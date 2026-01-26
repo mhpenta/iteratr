@@ -25,9 +25,9 @@ func (f *FileItem) ID() string {
 
 // Render returns the rendered string representation (required by ScrollItem interface).
 func (f *FileItem) Render(width int) string {
-	icon := "📄"
+	icon := "○"
 	if f.isDir {
-		icon = "📁"
+		icon = "▸"
 	}
 
 	// Format: "icon name"

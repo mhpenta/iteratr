@@ -335,7 +335,7 @@ func (m *NoteInputModal) renderTypeBadges() string {
 		// Determine badge style and text based on type
 		switch noteType {
 		case "learning":
-			text = "💡 learning"
+			text = "* learning"
 			if isActive {
 				if m.focus == focusTypeSelector {
 					// Active and focused: use primary color
@@ -351,7 +351,7 @@ func (m *NoteInputModal) renderTypeBadges() string {
 				badge = styleBadgeMuted
 			}
 		case "stuck":
-			text = "🚫 stuck"
+			text = "! stuck"
 			if isActive {
 				if m.focus == focusTypeSelector {
 					badge = styleBadge.
@@ -364,7 +364,7 @@ func (m *NoteInputModal) renderTypeBadges() string {
 				badge = styleBadgeMuted
 			}
 		case "tip":
-			text = "💬 tip"
+			text = "› tip"
 			if isActive {
 				if m.focus == focusTypeSelector {
 					badge = styleBadge.
@@ -377,7 +377,7 @@ func (m *NoteInputModal) renderTypeBadges() string {
 				badge = styleBadgeMuted
 			}
 		case "decision":
-			text = "⚡ decision"
+			text = "◇ decision"
 			if isActive {
 				if m.focus == focusTypeSelector {
 					badge = styleBadge.
@@ -390,7 +390,7 @@ func (m *NoteInputModal) renderTypeBadges() string {
 				badge = styleBadgeMuted
 			}
 		default:
-			text = "📝 " + noteType
+			text = "≡ " + noteType
 			if isActive {
 				if m.focus == focusTypeSelector {
 					badge = styleBadge.
