@@ -90,6 +90,15 @@ func (t *TemplateEditorStep) View() string {
 	// Show placeholder variables reference
 	varStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8"))
 	b.WriteString(varStyle.Render("Variables: {{session}} {{iteration}} {{spec}} {{notes}} {{tasks}} {{history}} {{extra}} {{port}} {{binary}}"))
+	b.WriteString("\n\n")
+
+	// Hint bar
+	hintBar := renderHintBar(
+		"enter", "next",
+		"ctrl+enter", "finish",
+		"esc", "back",
+	)
+	b.WriteString(hintBar)
 
 	return b.String()
 }

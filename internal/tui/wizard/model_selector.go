@@ -41,15 +41,16 @@ func (m *ModelInfo) Height() int {
 
 // ModelSelectorStep manages the model selector UI step.
 type ModelSelectorStep struct {
-	allModels   []*ModelInfo    // Full list from opencode
-	filtered    []*ModelInfo    // Filtered by search
-	selectedIdx int             // Index in filtered list
-	searchInput textinput.Model // Fuzzy search input
-	loading     bool            // Whether models are being fetched
-	error       string          // Error message if fetch failed
-	spinner     spinner.Model   // Loading spinner
-	width       int             // Available width
-	height      int             // Available height
+	allModels      []*ModelInfo    // Full list from opencode
+	filtered       []*ModelInfo    // Filtered by search
+	selectedIdx    int             // Index in filtered list
+	searchInput    textinput.Model // Fuzzy search input
+	loading        bool            // Whether models are being fetched
+	error          string          // Error message if fetch failed
+	isNotInstalled bool            // True if opencode is not installed
+	spinner        spinner.Model   // Loading spinner
+	width          int             // Available width
+	height         int             // Available height
 }
 
 // NewModelSelectorStep creates a new model selector step.
@@ -107,10 +108,21 @@ func (m *ModelSelectorStep) Init() tea.Cmd {
 // fetchModels executes "opencode models" and parses the output.
 func (m *ModelSelectorStep) fetchModels() tea.Cmd {
 	return func() tea.Msg {
+		// Check if opencode is installed
+		if _, err := exec.LookPath("opencode"); err != nil {
+			return ModelsErrorMsg{
+				err:            err,
+				isNotInstalled: true,
+			}
+		}
+
 		cmd := exec.Command("opencode", "models")
 		output, err := cmd.Output()
 		if err != nil {
-			return ModelsErrorMsg{err: err}
+			return ModelsErrorMsg{
+				err:            err,
+				isNotInstalled: false,
+			}
 		}
 
 		// Parse output
@@ -185,6 +197,7 @@ func (m *ModelSelectorStep) Update(msg tea.Msg) tea.Cmd {
 		// Error fetching models
 		m.loading = false
 		m.error = msg.err.Error()
+		m.isNotInstalled = msg.isNotInstalled
 		return nil
 
 	case spinner.TickMsg:
@@ -201,6 +214,19 @@ func (m *ModelSelectorStep) Update(msg tea.Msg) tea.Cmd {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return cmd
+	}
+
+	// Handle retry on error
+	if m.error != "" && !m.isNotInstalled {
+		if keyMsg, ok := msg.(tea.KeyPressMsg); ok && keyMsg.String() == "r" {
+			// Retry fetching models
+			m.loading = true
+			m.error = ""
+			return tea.Batch(
+				m.fetchModels(),
+				m.spinner.Tick,
+			)
+		}
 	}
 
 	// Handle keyboard input
@@ -255,8 +281,27 @@ func (m *ModelSelectorStep) View() string {
 	// Show error state
 	if m.error != "" {
 		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f38ba8"))
-		b.WriteString(errorStyle.Render("Error: " + m.error))
-		b.WriteString("\n\nPress 'r' to retry or ESC to go back")
+		hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8"))
+
+		if m.isNotInstalled {
+			// Special message for opencode not installed
+			b.WriteString(errorStyle.Render("✗ opencode is not installed"))
+			b.WriteString("\n\n")
+			b.WriteString(hintStyle.Render("opencode is required to fetch available models."))
+			b.WriteString("\n")
+			b.WriteString(hintStyle.Render("Install it from: https://github.com/opencode-ai/opencode"))
+			b.WriteString("\n\n")
+			// Hint bar for not installed case
+			hintBar := renderHintBar("esc", "back")
+			b.WriteString(hintBar)
+		} else {
+			// Generic error message
+			b.WriteString(errorStyle.Render("Error: " + m.error))
+			b.WriteString("\n\n")
+			// Hint bar for retry case
+			hintBar := renderHintBar("r", "retry", "esc", "back")
+			b.WriteString(hintBar)
+		}
 		return b.String()
 	}
 
@@ -267,6 +312,10 @@ func (m *ModelSelectorStep) View() string {
 	// Show filtered models
 	if len(m.filtered) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8")).Render("No models match your search"))
+		b.WriteString("\n\n")
+		// Hint bar for empty search results
+		hintBar := renderHintBar("type", "filter", "esc", "back")
+		b.WriteString(hintBar)
 		return b.String()
 	}
 
@@ -289,6 +338,18 @@ func (m *ModelSelectorStep) View() string {
 		b.WriteString("\n")
 	}
 
+	// Add spacing before hint bar
+	b.WriteString("\n")
+
+	// Hint bar for normal state
+	hintBar := renderHintBar(
+		"type", "filter",
+		"↑↓/j/k", "navigate",
+		"enter", "select",
+		"esc", "back",
+	)
+	b.WriteString(hintBar)
+
 	return b.String()
 }
 
@@ -307,7 +368,8 @@ type ModelsLoadedMsg struct {
 
 // ModelsErrorMsg is sent when model fetching fails.
 type ModelsErrorMsg struct {
-	err error
+	err            error
+	isNotInstalled bool // True if opencode is not installed
 }
 
 // ModelSelectedMsg is sent when a model is selected.

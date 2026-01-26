@@ -215,6 +215,17 @@ func (c *ConfigStep) View() string {
 		b.WriteString("\n")
 	}
 
+	b.WriteString("\n")
+
+	// Hint bar
+	hintBar := renderHintBar(
+		"tab", "cycle",
+		"enter", "finish",
+		"ctrl+enter", "finish",
+		"esc", "back",
+	)
+	b.WriteString(hintBar)
+
 	return b.String()
 }
 

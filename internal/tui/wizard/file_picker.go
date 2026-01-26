@@ -218,6 +218,18 @@ func (f *FilePickerStep) View() string {
 		b.WriteString("\n")
 	}
 
+	// Add spacing before hint bar
+	b.WriteString("\n")
+
+	// Hint bar
+	hintBar := renderHintBar(
+		"↑↓/j/k", "navigate",
+		"enter", "select",
+		"backspace", "up",
+		"esc", "cancel",
+	)
+	b.WriteString(hintBar)
+
 	return b.String()
 }
 
