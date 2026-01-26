@@ -75,14 +75,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 			// Write template content
 			if _, err := tmpFile.WriteString(result.Template); err != nil {
-				tmpFile.Close()
-				os.Remove(tmpFile.Name())
+				_ = tmpFile.Close()
+				_ = os.Remove(tmpFile.Name())
 				return fmt.Errorf("failed to write template to temp file: %w", err)
 			}
 
 			// Close file
 			if err := tmpFile.Close(); err != nil {
-				os.Remove(tmpFile.Name())
+				_ = os.Remove(tmpFile.Name())
 				return fmt.Errorf("failed to close temp template file: %w", err)
 			}
 
