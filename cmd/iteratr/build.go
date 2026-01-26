@@ -48,6 +48,9 @@ func init() {
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
+	// Track temp template file for cleanup
+	var tempTemplatePath string
+
 	// Run wizard if no spec provided and not headless
 	if buildFlags.spec == "" && !buildFlags.headless {
 		logger.Info("No spec file provided, launching wizard...")
@@ -64,9 +67,29 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 		// Write template to temp file if it was edited
 		if result.Template != "" {
-			// For now, we'll use the template directly via a future orchestrator enhancement
-			// The template temp file handling will be implemented in a later task
-			buildFlags.template = "" // Will be enhanced later
+			// Create temp file with secure permissions
+			tmpFile, err := os.CreateTemp("", "iteratr-template-*.txt")
+			if err != nil {
+				return fmt.Errorf("failed to create temp template file: %w", err)
+			}
+
+			// Write template content
+			if _, err := tmpFile.WriteString(result.Template); err != nil {
+				tmpFile.Close()
+				os.Remove(tmpFile.Name())
+				return fmt.Errorf("failed to write template to temp file: %w", err)
+			}
+
+			// Close file
+			if err := tmpFile.Close(); err != nil {
+				os.Remove(tmpFile.Name())
+				return fmt.Errorf("failed to close temp template file: %w", err)
+			}
+
+			// Set template path to temp file and track for cleanup
+			tempTemplatePath = tmpFile.Name()
+			buildFlags.template = tempTemplatePath
+			logger.Debug("Wizard template written to temp file: %s", tempTemplatePath)
 		}
 
 		logger.Info("Wizard completed: spec=%s, model=%s, session=%s, iterations=%d",
@@ -163,6 +186,15 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		if err := orch.Stop(); err != nil {
 			// Log error but don't write to stderr - corrupts terminal during TUI shutdown
 			logger.Error("Error during shutdown: %v", err)
+		}
+
+		// Clean up temp template file if it was created
+		if tempTemplatePath != "" {
+			if err := os.Remove(tempTemplatePath); err != nil {
+				logger.Warn("Failed to remove temp template file %s: %v", tempTemplatePath, err)
+			} else {
+				logger.Debug("Removed temp template file: %s", tempTemplatePath)
+			}
 		}
 	}()
 
