@@ -6,9 +6,10 @@ import (
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // NotesPanel displays notes grouped by type with color-coding.
@@ -60,24 +61,25 @@ func (n *NotesPanel) Render() string {
 
 // renderTypeHeader renders a color-coded header for a note type.
 func (n *NotesPanel) renderTypeHeader(noteType string, count int) string {
+	s := theme.Current().S()
 	var style lipgloss.Style
 	var label string
 
 	switch noteType {
 	case "learning":
-		style = styleNoteTypeLearning
+		style = s.NoteTypeLearning
 		label = "LEARNING"
 	case "stuck":
-		style = styleNoteTypeStuck
+		style = s.NoteTypeStuck
 		label = "STUCK"
 	case "tip":
-		style = styleNoteTypeTip
+		style = s.NoteTypeTip
 		label = "TIP"
 	case "decision":
-		style = styleNoteTypeDecision
+		style = s.NoteTypeDecision
 		label = "DECISION"
 	default:
-		style = styleHighlight
+		style = s.Highlight
 		label = strings.ToUpper(noteType)
 	}
 
@@ -87,9 +89,11 @@ func (n *NotesPanel) renderTypeHeader(noteType string, count int) string {
 
 // renderNote renders a single note with iteration number.
 func (n *NotesPanel) renderNote(note *session.Note) string {
+	s := theme.Current().S()
+
 	// Format iteration number
 	iterStr := fmt.Sprintf("[#%d]", note.Iteration)
-	iterFormatted := styleNoteIteration.Render(iterStr)
+	iterFormatted := s.NoteIteration.Render(iterStr)
 
 	// Format content with word wrapping if needed
 	content := note.Content
@@ -120,12 +124,12 @@ func (n *NotesPanel) renderNote(note *session.Note) string {
 
 		// Format first line with iteration number
 		firstLine := fmt.Sprintf("  %s %s", iterFormatted, lines[0])
-		result := []string{styleNoteContent.Render(firstLine)}
+		result := []string{s.NoteContent.Render(firstLine)}
 
 		// Format continuation lines without iteration number
 		for i := 1; i < len(lines); i++ {
 			contLine := fmt.Sprintf("      %s", lines[i])
-			result = append(result, styleNoteContent.Render(contLine))
+			result = append(result, s.NoteContent.Render(contLine))
 		}
 
 		return strings.Join(result, "\n")
@@ -133,7 +137,7 @@ func (n *NotesPanel) renderNote(note *session.Note) string {
 
 	// Single line note
 	noteStr := fmt.Sprintf("  %s %s", iterFormatted, content)
-	return styleNoteContent.Render(noteStr)
+	return s.NoteContent.Render(noteStr)
 }
 
 // SetSize updates the notes panel dimensions.
@@ -175,7 +179,7 @@ func (n *NotesPanel) UpdateState(state *session.State) tea.Cmd {
 // updateContent rebuilds the viewport content from current notes.
 func (n *NotesPanel) updateContent() {
 	if n.state == nil || len(n.state.Notes) == 0 {
-		n.viewport.SetContent(styleEmptyState.Render("No notes recorded yet"))
+		n.viewport.SetContent(theme.Current().S().EmptyState.Render("No notes recorded yet"))
 		return
 	}
 
