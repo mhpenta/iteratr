@@ -2,7 +2,7 @@ package tui
 
 import (
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
@@ -85,6 +85,8 @@ func (d *Dialog) Draw(scr uv.Screen, area uv.Rectangle) {
 	}
 
 	t := theme.Current()
+	s := t.S()
+
 	// Title styling - just colored text, no background
 	titleStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(t.Primary)).
@@ -125,13 +127,10 @@ func (d *Dialog) Draw(scr uv.Screen, area uv.Rectangle) {
 		buttonLine,
 	)
 
-	// Dialog box styling
-	dialogStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(t.Primary)).
-		Padding(1, 3)
-
-	dialog := dialogStyle.Render(content)
+	// Dialog box styling - use theme styles
+	dialog := s.ModalContainer.
+		Width(lipgloss.Width(content)).
+		Render(content)
 
 	// Calculate center position
 	dialogWidth := lipgloss.Width(dialog)
