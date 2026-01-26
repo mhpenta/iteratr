@@ -175,6 +175,12 @@ func NewGradientSpinner(colorA, colorB string, label string) GradientSpinner {
 	}
 }
 
+// NewDefaultGradientSpinner creates a gradient spinner using theme Primary and Secondary colors
+func NewDefaultGradientSpinner(label string) GradientSpinner {
+	t := theme.Current()
+	return NewGradientSpinner(string(t.Primary), string(t.Secondary), label)
+}
+
 // View renders the gradient spinner as an animated string
 func (g *GradientSpinner) View() string {
 	// Create the gradient string by interpolating between colorA and colorB

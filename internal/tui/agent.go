@@ -303,7 +303,7 @@ func (a *AgentOutput) AppendText(content string) tea.Cmd {
 	if !a.isStreaming && content == "" {
 		a.isStreaming = true
 		// Create spinner with label "Generating..."
-		spinner := NewGradientSpinner("#cba6f7", "#89b4fa", "Generating...")
+		spinner := NewDefaultGradientSpinner("Generating...")
 		a.spinner = &spinner
 		spinnerCmd = a.spinner.Tick()
 	}
@@ -548,7 +548,7 @@ func (a *AgentOutput) AppendThinking(content string) tea.Cmd {
 	if !a.isStreaming && content == "" {
 		a.isStreaming = true
 		// Create spinner with label "Thinking..."
-		spinner := NewGradientSpinner("#cba6f7", "#89b4fa", "Thinking...")
+		spinner := NewDefaultGradientSpinner("Thinking...")
 		a.spinner = &spinner
 		spinnerCmd = a.spinner.Tick()
 	}
