@@ -6,9 +6,10 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // TaskModal displays detailed information about a single task in a centered overlay.
@@ -81,7 +82,8 @@ func (m *TaskModal) Draw(scr uv.Screen, area uv.Rectangle) {
 	content := m.buildContent(modalWidth - 4) // Account for padding and borders
 
 	// Style the modal with border and background
-	modalStyle := styleModalContainer.
+	s := theme.Current().S()
+	modalStyle := s.ModalContainer.
 		Width(modalWidth).
 		Height(modalHeight)
 
@@ -118,6 +120,7 @@ func (m *TaskModal) buildContent(width int) string {
 		return m.cachedContent
 	}
 
+	s := theme.Current().S()
 	var sections []string
 
 	// === Title Section (with diagonal hatching decoration) ===
@@ -126,7 +129,7 @@ func (m *TaskModal) buildContent(width int) string {
 	sections = append(sections, "") // Blank line
 
 	// === ID Section ===
-	idLine := styleModalLabel.Render("ID: ") + styleModalValue.Render(m.task.ID)
+	idLine := s.ModalLabel.Render("ID: ") + s.ModalValue.Render(m.task.ID)
 	sections = append(sections, idLine)
 	sections = append(sections, "") // Blank line
 
@@ -134,21 +137,21 @@ func (m *TaskModal) buildContent(width int) string {
 	statusBadge := m.renderStatusBadge(m.task.Status)
 	priorityBadge := m.renderPriorityBadge(m.task.Priority)
 	statusLine := fmt.Sprintf("%s %s    %s %s",
-		styleModalLabel.Render("Status:"),
+		s.ModalLabel.Render("Status:"),
 		statusBadge,
-		styleModalLabel.Render("Priority:"),
+		s.ModalLabel.Render("Priority:"),
 		priorityBadge)
 	sections = append(sections, statusLine)
 	sections = append(sections, "") // Blank line
 
 	// === Separator ===
-	separator := styleModalSeparator.Render(strings.Repeat("─", width-2))
+	separator := s.ModalSeparator.Render(strings.Repeat("─", width-2))
 	sections = append(sections, separator)
 	sections = append(sections, "") // Blank line
 
 	// === Content Section ===
 	// Word-wrap content to fit modal width
-	wrappedContent := styleModalSection.Render(m.wordWrap(m.task.Content, width-2))
+	wrappedContent := s.ModalSection.Render(m.wordWrap(m.task.Content, width-2))
 	sections = append(sections, wrappedContent)
 	sections = append(sections, "") // Blank line
 
@@ -158,25 +161,25 @@ func (m *TaskModal) buildContent(width int) string {
 
 	// === Dependencies Section ===
 	if len(m.task.DependsOn) > 0 {
-		depsLabel := styleModalLabel.Render("Depends on: ")
-		depsContent := styleModalValue.Render(strings.Join(m.task.DependsOn, ", "))
+		depsLabel := s.ModalLabel.Render("Depends on: ")
+		depsContent := s.ModalValue.Render(strings.Join(m.task.DependsOn, ", "))
 		sections = append(sections, depsLabel+depsContent)
 		sections = append(sections, "") // Blank line
 	}
 
 	// === Timestamps Section ===
-	createdLine := styleModalLabel.Render("Created:  ") + styleModalValue.Render(m.formatTime(m.task.CreatedAt))
-	updatedLine := styleModalLabel.Render("Updated:  ") + styleModalValue.Render(m.formatTime(m.task.UpdatedAt))
+	createdLine := s.ModalLabel.Render("Created:  ") + s.ModalValue.Render(m.formatTime(m.task.CreatedAt))
+	updatedLine := s.ModalLabel.Render("Updated:  ") + s.ModalValue.Render(m.formatTime(m.task.UpdatedAt))
 	sections = append(sections, createdLine)
 	sections = append(sections, updatedLine)
 	sections = append(sections, "") // Blank line
 
 	// === Close Instructions (key/description differentiation) ===
-	closeHint := styleHintKey.Render("esc") + " " +
-		styleHintDesc.Render("close") + " " +
-		styleHintSeparator.Render("•") + " " +
-		styleHintKey.Render("click outside") + " " +
-		styleHintDesc.Render("dismiss")
+	closeHint := s.HintKey.Render("esc") + " " +
+		s.HintDesc.Render("close") + " " +
+		s.HintSeparator.Render("•") + " " +
+		s.HintKey.Render("click outside") + " " +
+		s.HintDesc.Render("dismiss")
 	closeText := lipgloss.NewStyle().Width(width - 2).Align(lipgloss.Center).Render(closeHint)
 	sections = append(sections, closeText)
 
@@ -192,24 +195,25 @@ func (m *TaskModal) buildContent(width int) string {
 
 // renderStatusBadge renders a styled badge for the task status.
 func (m *TaskModal) renderStatusBadge(status string) string {
+	s := theme.Current().S()
 	var badge lipgloss.Style
 	var text string
 
 	switch status {
 	case "in_progress":
-		badge = styleBadgeWarning
+		badge = s.BadgeWarning
 		text = "► in_progress"
 	case "remaining":
-		badge = styleBadgeMuted
+		badge = s.BadgeMuted
 		text = "○ remaining"
 	case "completed":
-		badge = styleBadgeSuccess
+		badge = s.BadgeSuccess
 		text = "✓ completed"
 	case "blocked":
-		badge = styleBadgeError
+		badge = s.BadgeError
 		text = "⊘ blocked"
 	default:
-		badge = styleBadgeMuted
+		badge = s.BadgeMuted
 		text = "○ " + status
 	}
 
@@ -218,27 +222,28 @@ func (m *TaskModal) renderStatusBadge(status string) string {
 
 // renderPriorityBadge renders a styled badge for the task priority.
 func (m *TaskModal) renderPriorityBadge(priority int) string {
+	s := theme.Current().S()
 	var badge lipgloss.Style
 	var text string
 
 	switch priority {
 	case 0:
-		badge = styleBadgeError
+		badge = s.BadgeError
 		text = "critical"
 	case 1:
-		badge = styleBadgeWarning
+		badge = s.BadgeWarning
 		text = "high"
 	case 2:
-		badge = styleBadgeInfo
+		badge = s.BadgeInfo
 		text = "medium"
 	case 3:
-		badge = styleBadgeMuted
+		badge = s.BadgeMuted
 		text = "low"
 	case 4:
-		badge = styleBadgeMuted.Faint(true)
+		badge = s.BadgeMuted.Faint(true)
 		text = "backlog"
 	default:
-		badge = styleBadgeMuted
+		badge = s.BadgeMuted
 		text = fmt.Sprintf("p%d", priority)
 	}
 
