@@ -545,8 +545,8 @@ func (m *WizardModel) renderModal(stepContent string) string {
 	if modalWidth < 60 {
 		modalWidth = 60
 	}
-	// Template editor step (2) uses full width, others capped for readability
-	if m.step != 2 && modalWidth > 100 {
+	// Template editor step (3) uses full width, others capped for readability
+	if m.step != 3 && modalWidth > 100 {
 		modalWidth = 100
 	}
 
