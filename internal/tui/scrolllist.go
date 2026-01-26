@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // ScrollItem represents a single item in a ScrollList.
@@ -129,7 +130,7 @@ func (s *ScrollList) View() string {
 		// Apply selection styling if this item is selected
 		if i == s.selectedIdx {
 			// Add selection indicator prefix
-			rendered = styleTaskSelected.Render("▸ ") + rendered
+			rendered = theme.Current().S().TaskSelected.Render("▸ ") + rendered
 		}
 
 		// Count lines in rendered output

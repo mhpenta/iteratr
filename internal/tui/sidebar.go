@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/tui/theme"
@@ -51,23 +51,24 @@ func (t *taskScrollItem) renderTask() string {
 	// Status indicator
 	var indicator string
 	var indicatorStyle lipgloss.Style
+	s := theme.Current().S()
 
 	switch task.Status {
 	case "in_progress":
 		indicator = "►"
-		indicatorStyle = styleStatusInProgress
+		indicatorStyle = s.StatusInProgress
 	case "remaining":
 		indicator = "○"
-		indicatorStyle = styleStatusRemaining
+		indicatorStyle = s.StatusRemaining
 	case "completed":
 		indicator = "✓"
-		indicatorStyle = styleStatusCompleted
+		indicatorStyle = s.StatusCompleted
 	case "blocked":
 		indicator = "⊘"
-		indicatorStyle = styleStatusBlocked
+		indicatorStyle = s.StatusBlocked
 	default:
 		indicator = "○"
-		indicatorStyle = styleStatusRemaining
+		indicatorStyle = s.StatusRemaining
 	}
 
 	// Truncate content to fit width (leave room for indicator and padding)
@@ -122,23 +123,24 @@ func (n *noteScrollItem) renderNote() string {
 	// Type indicator
 	var indicator string
 	var indicatorStyle lipgloss.Style
+	s := theme.Current().S()
 
 	switch note.Type {
 	case "learning":
 		indicator = "*"
-		indicatorStyle = styleStatusCompleted // Green
+		indicatorStyle = s.StatusCompleted // Green
 	case "stuck":
 		indicator = "!"
-		indicatorStyle = styleStatusBlocked // Red
+		indicatorStyle = s.StatusBlocked // Red
 	case "tip":
 		indicator = "›"
-		indicatorStyle = styleStatusInProgress // Yellow
+		indicatorStyle = s.StatusInProgress // Yellow
 	case "decision":
 		indicator = "◇"
-		indicatorStyle = styleStatusRemaining // Blue
+		indicatorStyle = s.StatusRemaining // Blue
 	default:
 		indicator = "≡"
-		indicatorStyle = styleDim
+		indicatorStyle = s.Muted
 	}
 
 	// Truncate content to fit width
@@ -298,7 +300,7 @@ func (s *Sidebar) drawTasksSection(scr uv.Screen, area uv.Rectangle) {
 		len(indicator),
 		1,
 	)
-	styledIndicator := styleScrollIndicator.Render(indicator)
+	styledIndicator := theme.Current().S().ScrollIndicator.Render(indicator)
 	uv.NewStyledString(styledIndicator).Draw(scr, indicatorArea)
 }
 
@@ -323,12 +325,13 @@ func (s *Sidebar) drawNotesSection(scr uv.Screen, area uv.Rectangle) {
 		len(indicator),
 		1,
 	)
-	styledIndicator := styleScrollIndicator.Render(indicator)
+	styledIndicator := theme.Current().S().ScrollIndicator.Render(indicator)
 	uv.NewStyledString(styledIndicator).Draw(scr, indicatorArea)
 }
 
 // drawLogo renders the logo box at the top of the sidebar.
 func (s *Sidebar) drawLogo(scr uv.Screen, area uv.Rectangle) {
+	t := theme.Current()
 	width := area.Dx()
 	if width < 10 {
 		return
@@ -343,7 +346,7 @@ func (s *Sidebar) drawLogo(scr uv.Screen, area uv.Rectangle) {
 	emptyLine := "│" + strings.Repeat(" ", innerWidth) + "│"
 
 	// Style for borders (primary color)
-	borderStyle := lipgloss.NewStyle().Foreground(colorPrimary)
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(t.Primary))
 
 	// Render logo text with gradient
 	renderGradientLine := func(text string) string {
@@ -369,7 +372,7 @@ func (s *Sidebar) drawLogo(scr uv.Screen, area uv.Rectangle) {
 			if len(runes) == 1 {
 				pos = 0
 			}
-			color := theme.InterpolateColor(string(colorPrimary), string(colorSecondary), pos)
+			color := theme.InterpolateColor(t.Primary, t.Secondary, pos)
 			charStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 			result.WriteString(charStyle.Render(string(r)))
 		}
@@ -691,6 +694,8 @@ func (s *Sidebar) updateContent() {
 // Render provides legacy string-based rendering for backward compatibility.
 // This method will be removed in Phase 12 once App is refactored to use Screen/Draw pattern.
 func (s *Sidebar) Render() string {
+	t := theme.Current()
+
 	// Guard against zero dimensions
 	if s.width < 10 || s.height < 5 {
 		return ""
@@ -713,7 +718,7 @@ func (s *Sidebar) Render() string {
 	}
 
 	// Render logo section with gradient
-	borderStyle := lipgloss.NewStyle().Foreground(colorPrimary)
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(t.Primary))
 	innerWidth := s.width - 2
 	topBorder := "╭" + strings.Repeat("─", innerWidth) + "╮"
 	bottomBorder := "╰" + strings.Repeat("─", innerWidth) + "╯"
@@ -740,7 +745,7 @@ func (s *Sidebar) Render() string {
 			if len(runes) == 1 {
 				pos = 0
 			}
-			color := theme.InterpolateColor(string(colorPrimary), string(colorSecondary), pos)
+			color := theme.InterpolateColor(t.Primary, t.Secondary, pos)
 			charStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 			result.WriteString(charStyle.Render(string(r)))
 		}
