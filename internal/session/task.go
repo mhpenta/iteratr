@@ -36,6 +36,7 @@ type TaskListResult struct {
 
 // TaskAdd creates a new task in the session.
 // Status defaults to "remaining" if not specified.
+// Returns an error if a task with the same content already exists.
 func (s *Store) TaskAdd(ctx context.Context, session string, params TaskAddParams) (*Task, error) {
 	// Validate required fields
 	if params.Content == "" {
@@ -57,6 +58,11 @@ func (s *Store) TaskAdd(ctx context.Context, session string, params TaskAddParam
 	state, err := s.LoadState(ctx, session)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load state for ID generation: %w", err)
+	}
+
+	// Check for duplicate content
+	if existingID := findTaskByContent(state, params.Content); existingID != "" {
+		return nil, fmt.Errorf("task already exists with ID %s: %q", existingID, params.Content)
 	}
 
 	// Generate sequential ID and timestamp
@@ -105,6 +111,7 @@ func (s *Store) TaskAdd(ctx context.Context, session string, params TaskAddParam
 
 // TaskBatchAdd creates multiple tasks in a single operation.
 // Loads state once and generates sequential IDs efficiently.
+// Returns an error if any task content already exists or if duplicates are in the batch.
 func (s *Store) TaskBatchAdd(ctx context.Context, session string, tasks []TaskAddParams) ([]*Task, error) {
 	if len(tasks) == 0 {
 		return nil, fmt.Errorf("at least one task is required")
@@ -114,6 +121,23 @@ func (s *Store) TaskBatchAdd(ctx context.Context, session string, tasks []TaskAd
 	state, err := s.LoadState(ctx, session)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load state for ID generation: %w", err)
+	}
+
+	// Check for duplicates against existing tasks and within the batch
+	seenInBatch := make(map[string]bool)
+	for _, params := range tasks {
+		normalizedContent := strings.ToLower(strings.TrimSpace(params.Content))
+
+		// Check against existing tasks
+		if existingID := findTaskByContent(state, params.Content); existingID != "" {
+			return nil, fmt.Errorf("task already exists with ID %s: %q", existingID, params.Content)
+		}
+
+		// Check for duplicates within the batch
+		if seenInBatch[normalizedContent] {
+			return nil, fmt.Errorf("duplicate task in batch: %q", params.Content)
+		}
+		seenInBatch[normalizedContent] = true
 	}
 
 	counter := state.TaskCounter
@@ -379,6 +403,19 @@ func isValidTaskStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+// findTaskByContent checks if a task with the same content already exists.
+// Comparison is case-insensitive and trims whitespace.
+// Returns the task ID if found, empty string otherwise.
+func findTaskByContent(state *State, content string) string {
+	normalizedContent := strings.ToLower(strings.TrimSpace(content))
+	for _, task := range state.Tasks {
+		if strings.ToLower(strings.TrimSpace(task.Content)) == normalizedContent {
+			return task.ID
+		}
+	}
+	return ""
 }
 
 // TaskNext returns the highest priority unblocked task.

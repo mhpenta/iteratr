@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/iteratr/internal/nats"
@@ -580,6 +581,144 @@ func TestTaskOperations(t *testing.T) {
 		}
 		if nextTask != nil {
 			t.Errorf("expected nil when no ready tasks, got %s", nextTask.ID)
+		}
+	})
+
+	t.Run("TaskAdd rejects duplicate content", func(t *testing.T) {
+		// Use a dedicated session
+		dupSession := "test-session-dup-content"
+
+		// Create first task
+		task1, err := store.TaskAdd(ctx, dupSession, TaskAddParams{
+			Content:   "Implement login feature",
+			Iteration: 1,
+		})
+		if err != nil {
+			t.Fatalf("TaskAdd failed: %v", err)
+		}
+
+		// Try to add same task again - should fail
+		_, err = store.TaskAdd(ctx, dupSession, TaskAddParams{
+			Content:   "Implement login feature",
+			Iteration: 1,
+		})
+		if err == nil {
+			t.Error("expected error for duplicate content")
+		}
+		if err != nil && !strings.Contains(err.Error(), "already exists") {
+			t.Errorf("expected 'already exists' in error, got: %v", err)
+		}
+		if err != nil && !strings.Contains(err.Error(), task1.ID) {
+			t.Errorf("expected task ID %s in error, got: %v", task1.ID, err)
+		}
+	})
+
+	t.Run("TaskAdd rejects duplicate content case-insensitive", func(t *testing.T) {
+		// Use a dedicated session
+		caseSession := "test-session-dup-case"
+
+		// Create first task
+		_, err := store.TaskAdd(ctx, caseSession, TaskAddParams{
+			Content:   "Fix Authentication Bug",
+			Iteration: 1,
+		})
+		if err != nil {
+			t.Fatalf("TaskAdd failed: %v", err)
+		}
+
+		// Try to add same task with different case - should fail
+		_, err = store.TaskAdd(ctx, caseSession, TaskAddParams{
+			Content:   "fix authentication bug",
+			Iteration: 1,
+		})
+		if err == nil {
+			t.Error("expected error for duplicate content (case-insensitive)")
+		}
+	})
+
+	t.Run("TaskAdd rejects duplicate content with whitespace differences", func(t *testing.T) {
+		// Use a dedicated session
+		wsSession := "test-session-dup-whitespace"
+
+		// Create first task
+		_, err := store.TaskAdd(ctx, wsSession, TaskAddParams{
+			Content:   "Add user profile",
+			Iteration: 1,
+		})
+		if err != nil {
+			t.Fatalf("TaskAdd failed: %v", err)
+		}
+
+		// Try to add same task with extra whitespace - should fail
+		_, err = store.TaskAdd(ctx, wsSession, TaskAddParams{
+			Content:   "  Add user profile  ",
+			Iteration: 1,
+		})
+		if err == nil {
+			t.Error("expected error for duplicate content (whitespace trimmed)")
+		}
+	})
+
+	t.Run("TaskBatchAdd rejects duplicate in existing tasks", func(t *testing.T) {
+		// Use a dedicated session
+		batchSession := "test-session-batch-dup-existing"
+
+		// Create first task
+		_, err := store.TaskAdd(ctx, batchSession, TaskAddParams{
+			Content:   "Setup database",
+			Iteration: 1,
+		})
+		if err != nil {
+			t.Fatalf("TaskAdd failed: %v", err)
+		}
+
+		// Try to batch add with one duplicate - should fail
+		_, err = store.TaskBatchAdd(ctx, batchSession, []TaskAddParams{
+			{Content: "Create API endpoints", Iteration: 1},
+			{Content: "Setup database", Iteration: 1}, // Duplicate
+			{Content: "Write tests", Iteration: 1},
+		})
+		if err == nil {
+			t.Error("expected error for duplicate in batch")
+		}
+		if err != nil && !strings.Contains(err.Error(), "already exists") {
+			t.Errorf("expected 'already exists' in error, got: %v", err)
+		}
+	})
+
+	t.Run("TaskBatchAdd rejects duplicates within batch", func(t *testing.T) {
+		// Use a dedicated session
+		batchDupSession := "test-session-batch-dup-internal"
+
+		// Try to batch add with internal duplicates - should fail
+		_, err := store.TaskBatchAdd(ctx, batchDupSession, []TaskAddParams{
+			{Content: "Task A", Iteration: 1},
+			{Content: "Task B", Iteration: 1},
+			{Content: "Task A", Iteration: 1}, // Duplicate within batch
+		})
+		if err == nil {
+			t.Error("expected error for duplicate within batch")
+		}
+		if err != nil && !strings.Contains(err.Error(), "duplicate task in batch") {
+			t.Errorf("expected 'duplicate task in batch' in error, got: %v", err)
+		}
+	})
+
+	t.Run("TaskBatchAdd succeeds with unique tasks", func(t *testing.T) {
+		// Use a dedicated session
+		uniqueSession := "test-session-batch-unique"
+
+		// Batch add unique tasks - should succeed
+		tasks, err := store.TaskBatchAdd(ctx, uniqueSession, []TaskAddParams{
+			{Content: "Task 1", Iteration: 1},
+			{Content: "Task 2", Iteration: 1},
+			{Content: "Task 3", Iteration: 1},
+		})
+		if err != nil {
+			t.Fatalf("TaskBatchAdd failed: %v", err)
+		}
+		if len(tasks) != 3 {
+			t.Errorf("expected 3 tasks, got %d", len(tasks))
 		}
 	})
 }
