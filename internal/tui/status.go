@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // DurationTickMsg is sent every second to update the session duration display.
@@ -74,7 +75,7 @@ func (s *StatusBar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 
 // buildLeft builds the left side of the status bar with session info.
 func (s *StatusBar) buildLeft() string {
-	title := styleHeaderTitle.Render("iteratr")
+	title := theme.Current().S().HeaderTitle.Render("iteratr")
 	sep := styleHeaderSeparator.Render(" | ")
 	sessionInfo := styleHeaderInfo.Render(s.sessionName)
 
