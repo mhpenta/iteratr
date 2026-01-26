@@ -97,10 +97,6 @@ var (
 // Style definitions
 var (
 	// Session info styles (used in status bar)
-	styleHeaderTitle = lipgloss.NewStyle().
-				Foreground(colorPrimary).
-				Bold(true)
-
 	styleHeaderSeparator = lipgloss.NewStyle().
 				Foreground(colorMuted)
 
