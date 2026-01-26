@@ -19,3 +19,4 @@
 | [message-queue-enhancement](./message-queue-enhancement.md) | Draft | Replace UI-layer single-message queue with orchestrator-layer FIFO queue (crush pattern) |
 | [build-wizard](./build-wizard.md) | Draft | Interactive wizard for `iteratr build` when no spec provided |
 | [hooks](./hooks.md) | Active | Pre-iteration hooks for injecting dynamic context via shell commands |
+| [theme-system](./theme-system.md) | Draft | Centralized theme package for consistent colors/styles (crush pattern) |
