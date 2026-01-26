@@ -7,19 +7,35 @@ import (
 )
 
 // Theme defines the color palette for the TUI.
-// For tracer bullet, this contains only minimal colors needed to validate architecture.
 type Theme struct {
 	Name   string
 	IsDark bool
 
 	// Semantic colors
-	Primary string // lipgloss.Color is a string type
+	Primary   string // lipgloss.Color is a string type
+	Secondary string
+	Tertiary  string
 
-	// Background hierarchy
-	BgBase string
+	// Background hierarchy (dark→light)
+	BgBase     string
+	BgMantle   string
+	BgGutter   string
+	BgSurface0 string
+	BgSurface1 string
+	BgSurface2 string
+	BgOverlay  string
 
-	// Foreground hierarchy
-	FgBase string
+	// Foreground hierarchy (dim→bright)
+	FgMuted  string
+	FgSubtle string
+	FgBase   string
+	FgBright string
+
+	// Status colors
+	Success string
+	Warning string
+	Error   string
+	Info    string
 
 	// Lazy-built styles
 	styles     *Styles
