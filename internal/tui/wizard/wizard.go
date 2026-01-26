@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	lipglossv2 "charm.land/lipgloss/v2"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // WizardResult holds the output values from the wizard.
@@ -283,7 +283,7 @@ func (m *WizardModel) View() tea.View {
 		Max: uv.Position{X: m.width, Y: m.height},
 	})
 
-	view.Content = lipglossv2.NewLayer(canvas.Render())
+	view.Content = lipgloss.NewLayer(canvas.Render())
 	return view
 }
 
@@ -299,7 +299,7 @@ func (m *WizardModel) renderModal(stepContent string) string {
 		"Session Configuration",
 	}
 	title := fmt.Sprintf("Build Wizard - Step %d of 4: %s", m.step+1, stepNames[m.step])
-	sections = append(sections, styleModalTitle.Render(title))
+	sections = append(sections, theme.Current().S().ModalTitle.Render(title))
 	sections = append(sections, "")
 
 	// Step content
@@ -333,7 +333,7 @@ func (m *WizardModel) renderModal(stepContent string) string {
 	}
 
 	// Apply modal container style with fixed dimensions
-	modalStyle := styleModalContainer.Width(modalWidth).Height(modalHeight)
+	modalStyle := theme.Current().S().ModalContainer.Width(modalWidth).Height(modalHeight)
 
 	modalContent := modalStyle.Render(content)
 
