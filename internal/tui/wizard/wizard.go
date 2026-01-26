@@ -192,12 +192,35 @@ func (m *WizardModel) initCurrentStep() {
 
 // updateCurrentStepSize updates the size of the current step component.
 func (m *WizardModel) updateCurrentStepSize() {
-	// Reserve space for modal container (padding, borders, title, buttons)
-	contentWidth := m.width - 10
-	contentHeight := m.height - 10
+	// Calculate modal dimensions first
+	modalWidth := m.width - 6
+	if modalWidth < 60 {
+		modalWidth = 60
+	}
+	if m.step != 2 && modalWidth > 100 {
+		modalWidth = 100
+	}
+
+	// Content width = modal width minus padding (2 each side) minus border (1 each side)
+	contentWidth := modalWidth - 6
 	if contentWidth < 40 {
 		contentWidth = 40
 	}
+
+	// Modal height calculation
+	modalHeight := m.height - 4
+	if modalHeight < 15 {
+		modalHeight = 15
+	}
+	// Content height = modal height minus:
+	// - padding top/bottom: 2
+	// - border top/bottom: 2
+	// - title line: 1
+	// - blank after title: 1
+	// - blank before buttons: 1
+	// - button bar: 1
+	// Total overhead: 8
+	contentHeight := modalHeight - 8
 	if contentHeight < 10 {
 		contentHeight = 10
 	}
@@ -294,17 +317,23 @@ func (m *WizardModel) renderModal(stepContent string) string {
 
 	// Calculate modal dimensions based on terminal size
 	// Leave margins for visual spacing
-	modalWidth := m.width - 10
+	modalWidth := m.width - 6 // Minimal margin for borders
 	if modalWidth < 60 {
 		modalWidth = 60
 	}
-	if modalWidth > 100 {
-		modalWidth = 100 // Max width for readability
+	// Template editor step (2) uses full width, others capped for readability
+	if m.step != 2 && modalWidth > 100 {
+		modalWidth = 100
 	}
 
-	// Apply modal container style without fixed height
-	// This allows content to determine height naturally
-	modalStyle := styleModalContainer.Width(modalWidth)
+	// Calculate modal height (terminal height minus small margin)
+	modalHeight := m.height - 4
+	if modalHeight < 15 {
+		modalHeight = 15
+	}
+
+	// Apply modal container style with fixed dimensions
+	modalStyle := styleModalContainer.Width(modalWidth).Height(modalHeight)
 
 	modalContent := modalStyle.Render(content)
 
@@ -318,11 +347,12 @@ func (m *WizardModel) renderModal(stepContent string) string {
 // createButtonBar creates the button bar for the current step.
 // Buttons are context-aware based on step and validation state.
 func (m *WizardModel) createButtonBar() string {
-	modalWidth := m.width - 10
+	modalWidth := m.width - 6
 	if modalWidth < 60 {
 		modalWidth = 60
 	}
-	if modalWidth > 100 {
+	// Template editor step (2) uses full width, others capped for readability
+	if m.step != 2 && modalWidth > 100 {
 		modalWidth = 100
 	}
 

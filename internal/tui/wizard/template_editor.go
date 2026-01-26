@@ -1,59 +1,88 @@
 package wizard
 
 import (
+	"os"
+	"regexp"
 	"strings"
 
-	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
+	lipglossv2 "charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/editor"
 	"github.com/mark3labs/iteratr/internal/template"
 )
 
-// TemplateEditorStep manages the template editor UI step.
+// Style for highlighting {{variables}} in templates
+var styleTemplateVar = lipglossv2.NewStyle().
+	Foreground(lipglossv2.Color("#cba6f7")). // Primary purple (Mauve)
+	Bold(true)
+
+// Style for markdown headers
+var styleTemplateHeader = lipglossv2.NewStyle().
+	Foreground(lipglossv2.Color("#89b4fa")). // Blue
+	Bold(true)
+
+// TemplateEditorStep manages the template viewer UI step with syntax highlighting.
 type TemplateEditorStep struct {
-	textarea textarea.Model // Multi-line textarea for template editing
+	viewport viewport.Model // Scrollable viewport for template display
+	content  string         // Raw template content
 	width    int            // Available width
 	height   int            // Available height
+	tmpFile  string         // Path to temp file for editing
 }
 
 // NewTemplateEditorStep creates a new template editor step.
 func NewTemplateEditorStep() *TemplateEditorStep {
-	// Create and configure textarea
-	ta := textarea.New()
-	ta.Placeholder = "Edit template..."
-	ta.ShowLineNumbers = false
-	ta.Prompt = "" // No prompt character
-	ta.SetWidth(60)
-	ta.SetHeight(10)
+	// Create viewport
+	vp := viewport.New(
+		viewport.WithWidth(60),
+		viewport.WithHeight(10),
+	)
 
-	// No character limit for template
-	ta.CharLimit = 0
+	// Enable mouse wheel scrolling
+	vp.MouseWheelEnabled = true
+	vp.MouseWheelDelta = 3
 
-	// Override textarea KeyMap to prevent conflicts
-	// Remove ctrl+n from LineNext (if needed for wizard shortcuts)
-	ta.KeyMap.LineNext = key.NewBinding(key.WithKeys("down"))
+	// Get default template content
+	content := template.DefaultTemplate
 
-	// Style textarea with dark theme
-	styles := textarea.DefaultDarkStyles()
-	styles.Cursor.Color = lipgloss.Color("#cba6f7") // Primary color
-	styles.Cursor.Shape = tea.CursorBlock
-	styles.Cursor.Blink = true
-	ta.SetStyles(styles)
-
-	// Pre-populate with default template
-	ta.SetValue(template.DefaultTemplate)
+	// Set highlighted content
+	vp.SetContent(highlightTemplate(content))
 
 	return &TemplateEditorStep{
-		textarea: ta,
+		viewport: vp,
+		content:  content,
 		width:    60,
 		height:   20,
 	}
 }
 
-// Init initializes the template editor and focuses the textarea.
+// highlightTemplate applies syntax highlighting to template content.
+// Highlights {{variables}} and markdown headers.
+func highlightTemplate(content string) string {
+	// First highlight {{variables}}
+	varRegex := regexp.MustCompile(`\{\{[^}]+\}\}`)
+	result := varRegex.ReplaceAllStringFunc(content, func(match string) string {
+		return styleTemplateVar.Render(match)
+	})
+
+	// Then highlight markdown headers (lines starting with #)
+	lines := strings.Split(result, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		if strings.HasPrefix(trimmed, "#") {
+			// Find where the # starts
+			prefix := line[:len(line)-len(trimmed)]
+			lines[i] = prefix + styleTemplateHeader.Render(trimmed)
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// Init initializes the template editor.
 func (t *TemplateEditorStep) Init() tea.Cmd {
-	return t.textarea.Focus()
+	return nil
 }
 
 // SetSize updates the dimensions for the template editor.
@@ -61,43 +90,113 @@ func (t *TemplateEditorStep) SetSize(width, height int) {
 	t.width = width
 	t.height = height
 
-	// Update textarea size (leave room for variable reference)
-	t.textarea.SetWidth(width - 4)
+	// Update viewport dimensions (full width)
+	t.viewport.SetWidth(width)
 
-	// Reserve 4 lines for variable reference at bottom
-	textareaHeight := height - 4
-	if textareaHeight < 5 {
-		textareaHeight = 5
+	// Reserve space for content below viewport:
+	// - 1 line for hint bar
+	viewportHeight := height - 1
+	if viewportHeight < 5 {
+		viewportHeight = 5
 	}
-	t.textarea.SetHeight(textareaHeight)
+	t.viewport.SetHeight(viewportHeight)
 }
 
 // Update handles messages for the template editor step.
 func (t *TemplateEditorStep) Update(msg tea.Msg) tea.Cmd {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "e":
+			// Open external editor
+			return t.openEditor()
+		}
+	case TemplateEditedMsg:
+		// Editor returned with new content
+		t.content = msg.Content
+		t.viewport.SetContent(highlightTemplate(t.content))
+		t.viewport.GotoTop()
+		// Clean up temp file
+		if t.tmpFile != "" {
+			os.Remove(t.tmpFile)
+			t.tmpFile = ""
+		}
+		return nil
+	}
+
 	var cmd tea.Cmd
-	t.textarea, cmd = t.textarea.Update(msg)
+	t.viewport, cmd = t.viewport.Update(msg)
 	return cmd
+}
+
+// openEditor launches the user's $EDITOR with the template content.
+func (t *TemplateEditorStep) openEditor() tea.Cmd {
+	// Create temp file with template content
+	tmpfile, err := os.CreateTemp("", "iteratr_template_*.md")
+	if err != nil {
+		return nil // Silently fail - editor not available
+	}
+
+	// Write current content to temp file
+	if _, err := tmpfile.WriteString(t.content); err != nil {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
+		return nil
+	}
+	tmpfile.Close()
+
+	// Store temp file path for cleanup
+	t.tmpFile = tmpfile.Name()
+
+	// Create editor command
+	cmd, err := editor.Command("iteratr", tmpfile.Name())
+	if err != nil {
+		os.Remove(tmpfile.Name())
+		return nil
+	}
+
+	// Execute editor and read result
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		if err != nil {
+			return nil
+		}
+
+		// Read modified content
+		content, err := os.ReadFile(tmpfile.Name())
+		if err != nil {
+			return nil
+		}
+
+		return TemplateEditedMsg{
+			Content: string(content),
+		}
+	})
 }
 
 // View renders the template editor step.
 func (t *TemplateEditorStep) View() string {
 	var b strings.Builder
 
-	// Render textarea
-	b.WriteString(t.textarea.View())
-	b.WriteString("\n\n")
+	// Render viewport
+	b.WriteString(t.viewport.View())
+	b.WriteString("\n")
 
-	// Show placeholder variables reference
-	varStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8"))
-	b.WriteString(varStyle.Render("Variables: {{session}} {{iteration}} {{spec}} {{notes}} {{tasks}} {{history}} {{extra}} {{port}} {{binary}}"))
-	b.WriteString("\n\n")
-
-	// Hint bar
-	hintBar := renderHintBar(
-		"enter", "next",
-		"ctrl+enter", "finish",
-		"esc", "back",
-	)
+	// Hint bar - only show edit option if $EDITOR is set
+	var hintBar string
+	if os.Getenv("EDITOR") != "" {
+		hintBar = renderHintBar(
+			"↑↓", "scroll",
+			"e", "edit",
+			"enter", "next",
+			"esc", "back",
+		)
+	} else {
+		hintBar = renderHintBar(
+			"↑↓", "scroll",
+			"enter", "next",
+			"esc", "back",
+		)
+	}
 	b.WriteString(hintBar)
 
 	return b.String()
@@ -105,10 +204,10 @@ func (t *TemplateEditorStep) View() string {
 
 // Content returns the current template content.
 func (t *TemplateEditorStep) Content() string {
-	return t.textarea.Value()
+	return t.content
 }
 
-// TemplateEditedMsg is sent when the template is modified (optional, for future use).
+// TemplateEditedMsg is sent when the external editor returns with new content.
 type TemplateEditedMsg struct {
 	Content string
 }
