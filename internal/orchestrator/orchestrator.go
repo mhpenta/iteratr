@@ -454,6 +454,15 @@ func (o *Orchestrator) Run() error {
 
 		logger.Info("=== Iteration #%d completed successfully ===", currentIteration)
 
+		// Run auto-commit if enabled and files were modified
+		if o.autoCommit && o.fileTracker.HasChanges() {
+			logger.Info("Auto-commit enabled with %d modified files, running commit", o.fileTracker.Count())
+			if err := o.runAutoCommit(o.ctx); err != nil {
+				logger.Warn("Auto-commit failed: %v", err)
+				// Don't fail the iteration - just log the warning
+			}
+		}
+
 		// Print completion message in headless mode
 		if o.cfg.Headless {
 			fmt.Printf("\n✓ Iteration #%d complete\n\n", currentIteration)
