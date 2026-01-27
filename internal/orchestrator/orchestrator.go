@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -41,23 +42,25 @@ type Config struct {
 
 // Orchestrator manages the iteration loop with embedded NATS, agent runner, and TUI.
 type Orchestrator struct {
-	cfg         Config
-	ns          *natsserver.Server // Embedded NATS server (nil if node mode)
-	natsPort    int                // NATS server port
-	nc          *natsgo.Conn       // NATS connection
-	store       *session.Store     // Session store
-	runner      *agent.Runner      // Agent runner for opencode subprocess
-	tuiApp      *tui.App           // TUI application (nil if headless)
-	tuiProgram  *tea.Program       // Bubbletea program
-	tuiDone     chan struct{}      // TUI completion signal
-	sendChan    chan string        // Channel for user input messages from TUI to orchestrator
-	ctx         context.Context    // Context for cancellation
-	cancel      context.CancelFunc // Cancel function
-	stopped     bool               // Track if Stop() was already called
-	isPrimary   bool               // True if this instance owns the NATS server
-	hooksConfig *hooks.Config      // Hooks configuration (nil if no hooks file)
-	fileTracker *agent.FileTracker // Tracks files modified during iteration
-	autoCommit  bool               // Auto-commit modified files after iteration
+	cfg               Config
+	ns                *natsserver.Server // Embedded NATS server (nil if node mode)
+	natsPort          int                // NATS server port
+	nc                *natsgo.Conn       // NATS connection
+	store             *session.Store     // Session store
+	runner            *agent.Runner      // Agent runner for opencode subprocess
+	tuiApp            *tui.App           // TUI application (nil if headless)
+	tuiProgram        *tea.Program       // Bubbletea program
+	tuiDone           chan struct{}      // TUI completion signal
+	sendChan          chan string        // Channel for user input messages from TUI to orchestrator
+	ctx               context.Context    // Context for cancellation
+	cancel            context.CancelFunc // Cancel function
+	stopped           bool               // Track if Stop() was already called
+	isPrimary         bool               // True if this instance owns the NATS server
+	hooksConfig       *hooks.Config      // Hooks configuration (nil if no hooks file)
+	fileTracker       *agent.FileTracker // Tracks files modified during iteration
+	autoCommit        bool               // Auto-commit modified files after iteration
+	pendingHookOutput string             // Buffer for hook output to be sent in next iteration
+	pendingMu         sync.Mutex         // Protects pendingHookOutput (needed for NATS callback)
 }
 
 // New creates a new Orchestrator with the given configuration.
@@ -818,6 +821,42 @@ func (o *Orchestrator) startTUI() error {
 	}()
 
 	return nil
+}
+
+// appendPendingOutput appends hook output to the pending buffer (FIFO order).
+// Thread-safe for use from NATS callbacks.
+func (o *Orchestrator) appendPendingOutput(output string) {
+	if output == "" {
+		return
+	}
+	o.pendingMu.Lock()
+	defer o.pendingMu.Unlock()
+
+	if o.pendingHookOutput == "" {
+		o.pendingHookOutput = output
+	} else {
+		o.pendingHookOutput += "\n" + output
+	}
+}
+
+// drainPendingOutput returns and clears the pending buffer.
+// Thread-safe for use with NATS callbacks.
+func (o *Orchestrator) drainPendingOutput() string {
+	o.pendingMu.Lock()
+	defer o.pendingMu.Unlock()
+
+	output := o.pendingHookOutput
+	o.pendingHookOutput = ""
+	return output
+}
+
+// hasPendingOutput checks if there is pending hook output.
+// Thread-safe for use with NATS callbacks.
+func (o *Orchestrator) hasPendingOutput() bool {
+	o.pendingMu.Lock()
+	defer o.pendingMu.Unlock()
+
+	return o.pendingHookOutput != ""
 }
 
 // isGitRepo checks if the given directory is inside a git repository.
