@@ -2,37 +2,27 @@ package tui
 
 import (
 	"context"
-	"os/exec"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
-
-	"github.com/mark3labs/iteratr/internal/agent"
 )
 
 // SubagentModal displays a full-screen modal that loads and replays a subagent session.
 // It reuses the existing ScrollList and MessageItem infrastructure from AgentOutput.
 type SubagentModal struct {
 	// Content display (reuses AgentOutput infrastructure)
-	scrollList *ScrollList
-	messages   []MessageItem
-	toolIndex  map[string]int // toolCallId → message index
+	messages  []MessageItem
+	toolIndex map[string]int // toolCallId → message index
 
 	// Session metadata
 	sessionID    string
 	subagentType string
 	workDir      string
 
-	// ACP subprocess
-	cmd *exec.Cmd
-	// conn will be stored as interface{} to avoid exposing internal agent types
-	// Actual implementation will use agent.acpConn internally
+	// ACP subprocess will be added when implementing Start()
 
 	// State
 	loading bool
-	err     error // Non-nil shows error message in modal
-	width   int
-	height  int
 
 	// Spinner for loading state (created lazily when needed)
 	spinner *GradientSpinner
@@ -88,24 +78,4 @@ func (m *SubagentModal) HandleUpdate(msg tea.Msg) tea.Cmd {
 // Close terminates the ACP subprocess and cleans up resources.
 func (m *SubagentModal) Close() {
 	// This will be implemented in task TAS-21
-}
-
-// appendText adds agent text to the modal's message list.
-func (m *SubagentModal) appendText(content string) {
-	// This will be implemented in task TAS-18
-}
-
-// appendToolCall adds or updates a tool call message.
-func (m *SubagentModal) appendToolCall(event agent.ToolCallEvent) {
-	// This will be implemented in task TAS-18
-}
-
-// appendThinking adds agent thinking content to the modal's message list.
-func (m *SubagentModal) appendThinking(content string) {
-	// This will be implemented in task TAS-18
-}
-
-// appendUserMessage adds a user message to the modal's message list.
-func (m *SubagentModal) appendUserMessage(text string) {
-	// This will be implemented in task TAS-18
 }
