@@ -649,15 +649,12 @@ func (s *SubagentMessageItem) Render(width int) string {
 	th := t.S()
 	bg := lipgloss.Color(t.BgSurface0)
 
-	// Calculate box content width to match tool output blocks:
-	// Tool output uses width-2 with MarginLeft(2) built into the style
-	// We use 2-char manual indent + box (border 1 + padding 1 on each side = 4)
-	// So box content width = width - 2 (indent) - 4 (frame) = width - 6
-	// But we want the visual box to align with tool output, so just use width - 4
-	// and let the box frame add the rest
-	boxWidth := width - 4
-	if boxWidth < 20 {
-		boxWidth = 20
+	// Calculate content width same as tool output blocks:
+	// Style has MarginLeft(2), so content width = width - 2
+	// The box frame (border + padding) determines the actual content area inside
+	contentWidth := width - 2
+	if contentWidth < 20 {
+		contentWidth = 20
 	}
 
 	// --- HEADER: [icon] [type] status ---
@@ -691,17 +688,19 @@ func (s *SubagentMessageItem) Render(width int) string {
 	}
 
 	// Build header line with explicit backgrounds on styled parts
+	// Style spaces too to prevent black gaps
+	space := lipgloss.NewStyle().Background(bg).Render(" ")
 	nameStyled := th.ToolName.Background(bg).Render("[" + s.subagentType + "]")
 	statusStyled := th.ToolParams.Background(bg).Render(statusText)
-	header := icon + " " + nameStyled + " " + statusStyled
+	header := icon + space + nameStyled + space + statusStyled
 
-	// --- DESCRIPTION LINE ---
-	description := "  " + s.description // 2-space indent within box
+	// --- DESCRIPTION ---
+	description := s.description
 
 	// Build content lines
 	var content strings.Builder
 	content.WriteString(header)
-	content.WriteString("\n")
+	content.WriteString("\n\n")
 	content.WriteString(description)
 
 	// --- "Click to view" HINT (only if sessionID available) ---
@@ -714,21 +713,11 @@ func (s *SubagentMessageItem) Render(width int) string {
 		content.WriteString(hintStyled)
 	}
 
-	// Apply box styling
-	boxed := th.SubagentMessageBox.Width(boxWidth).Render(content.String())
-
-	// Add 2-char indent to each line to match other tool messages
-	lines := strings.Split(boxed, "\n")
-	var result strings.Builder
-	for i, line := range lines {
-		if i > 0 {
-			result.WriteString("\n")
-		}
-		result.WriteString("  " + line)
-	}
+	// Apply box styling - MarginLeft(2) is built into the style
+	boxed := th.SubagentMessageBox.Width(contentWidth).Render(content.String())
 
 	// Cache and return
-	s.cachedRender = result.String()
+	s.cachedRender = boxed
 	s.cachedWidth = width
 	return s.cachedRender
 }

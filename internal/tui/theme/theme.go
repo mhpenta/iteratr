@@ -226,7 +226,8 @@ func (t *Theme) buildStyles() *Styles {
 		Background(lipgloss.Color(t.BgSurface0)).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(t.BorderMuted)).
-		Padding(0, 1)
+		Padding(0, 1, 1, 1). // top, right, bottom, left
+		MarginLeft(2)
 
 	// Input styles (bubbles textinput)
 	s.TextInputStyles = t.buildTextInputStyles()
