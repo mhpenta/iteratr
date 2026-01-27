@@ -410,6 +410,12 @@ func (o *Orchestrator) Run() error {
 			o.tuiProgram.Send(tui.IterationStartMsg{Number: currentIteration})
 		}
 
+		// Drain pending hook output from previous iterations (session_start, post_iteration, on_task_complete)
+		pendingOutput := o.drainPendingOutput()
+		if len(pendingOutput) > 0 {
+			logger.Debug("Drained pending hook output: %d bytes", len(pendingOutput))
+		}
+
 		// Execute pre-iteration hooks if configured
 		var hookOutput string
 		if o.hooksConfig != nil && len(o.hooksConfig.Hooks.PreIteration) > 0 {
@@ -429,9 +435,20 @@ func (o *Orchestrator) Run() error {
 			} else {
 				hookOutput = output
 				if len(output) > 0 {
-					logger.Debug("Hook output: %d bytes", len(output))
+					logger.Debug("Pre-iteration hook output: %d bytes", len(output))
 				}
 			}
+		}
+
+		// Combine pending output and pre-iteration hook output
+		// Pending output comes first (FIFO order from session_start, post_iteration, on_task_complete)
+		if len(pendingOutput) > 0 {
+			if len(hookOutput) > 0 {
+				hookOutput = pendingOutput + "\n" + hookOutput
+			} else {
+				hookOutput = pendingOutput
+			}
+			logger.Debug("Combined hook output: %d bytes", len(hookOutput))
 		}
 
 		// Build prompt with current state
