@@ -1,0 +1,103 @@
+# iteratr Hooks Configuration Example
+# Save as .iteratr.hooks.yml in your working directory
+
+version: 1
+
+hooks:
+  # session_start: Run once at session start, before first iteration
+  # Use for: Setup tasks, pulling latest code, verifying dependencies
+  session_start:
+    - command: "git pull --rebase"
+      timeout: 30
+      # pipe_output: false (default) - just run silently
+    
+    - command: "go build ./..."
+      timeout: 60
+      pipe_output: true  # Send build errors to agent in first iteration
+
+  # pre_iteration: Run before each iteration
+  # Use for: Linting, static analysis, up-to-date context
+  # BREAKING CHANGE: Now requires explicit pipe_output: true
+  pre_iteration:
+    - command: "golangci-lint run ./..."
+      timeout: 30
+      pipe_output: true  # Agent sees lint errors and can fix them
+    
+    - command: "git status --short"
+      timeout: 5
+      pipe_output: true  # Agent sees current changes
+    
+    - command: "go vet ./..."
+      timeout: 10
+      pipe_output: true
+
+  # post_iteration: Run after each iteration completes
+  # Use for: Tests, builds, notifications
+  # Output piped to agent at START of NEXT iteration
+  post_iteration:
+    - command: "go test ./... -short"
+      timeout: 120
+      pipe_output: true  # Agent sees test failures next iteration
+    
+    - command: "go build ./..."
+      timeout: 60
+      pipe_output: true  # Agent sees build errors next iteration
+    
+    - command: 'curl -X POST $SLACK_WEBHOOK -d "{\"text\": \"Iteration {{iteration}} done\"}"'
+      timeout: 5
+      # pipe_output: false (default) - just send notification
+
+  # session_end: Run once after session completes (after final delivery)
+  # Use for: Cleanup, notifications, final builds
+  # pipe_output is ignored (no more iterations)
+  session_end:
+    - command: "git push origin HEAD"
+      timeout: 30
+    
+    - command: "./scripts/notify-complete.sh {{session}}"
+      timeout: 10
+
+  # on_task_complete: Run when any task is marked completed
+  # Use for: Task validation, per-task builds/tests
+  # Subscribes to NATS task events, output piped to next iteration
+  on_task_complete:
+    - command: "./scripts/validate-task.sh {{task_id}}"
+      timeout: 30
+      pipe_output: true  # Agent sees validation results
+    
+    - command: 'echo "Task {{task_id}} completed: {{task_content}}"'
+      timeout: 5
+      # pipe_output: false (default) - just log
+
+  # on_error: Run when iteration fails (agent error, network error, etc.)
+  # Use for: Diagnostics, state dumps
+  # Output sent immediately in recovery prompt, then continues to next iteration
+  on_error:
+    - command: "git diff HEAD"
+      timeout: 10
+      pipe_output: true  # Show agent what changed before error
+    
+    - command: "git status --short"
+      timeout: 5
+      pipe_output: true
+    
+    - command: 'echo "Error in iteration {{iteration}}: {{error}}"'
+      timeout: 5
+      # pipe_output: false (default) - just log
+
+# Template Variables Available:
+# {{session}} - Session name (all hooks)
+# {{iteration}} - Current iteration number (pre_iteration, post_iteration, on_error)
+# {{task_id}} - Task ID (on_task_complete)
+# {{task_content}} - Task content text (on_task_complete)
+# {{error}} - Error message (on_error)
+
+# Timeout:
+# - Defaults to 30 seconds if not specified
+# - Commands killed after timeout
+# - Partial output included with timeout error message
+
+# Error Handling:
+# - Hook failures never fail the session
+# - Errors logged and included in output
+# - Context cancellation propagates properly
