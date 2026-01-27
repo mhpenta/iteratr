@@ -8,8 +8,12 @@ type Config struct {
 
 // HooksConfig contains all hook configurations.
 type HooksConfig struct {
-	PreIteration  []*HookConfig `yaml:"pre_iteration"`
-	PostIteration []*HookConfig `yaml:"post_iteration"`
+	SessionStart   []*HookConfig `yaml:"session_start"`
+	PreIteration   []*HookConfig `yaml:"pre_iteration"`
+	PostIteration  []*HookConfig `yaml:"post_iteration"`
+	SessionEnd     []*HookConfig `yaml:"session_end"`
+	OnTaskComplete []*HookConfig `yaml:"on_task_complete"`
+	OnError        []*HookConfig `yaml:"on_error"`
 }
 
 // HookConfig defines a single hook's configuration.
