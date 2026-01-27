@@ -570,6 +570,27 @@ func (o *Orchestrator) Run() error {
 	}
 
 	logger.Info("Iteration loop finished for session '%s'", o.cfg.SessionName)
+
+	// Final delivery: if pending buffer has content, send to agent before session_end
+	// This gives the agent a chance to address test failures discovered in final post_iteration
+	if o.hasPendingOutput() {
+		pendingOutput := o.drainPendingOutput()
+		logger.Info("Final delivery: sending pending hook output to agent (%d bytes)", len(pendingOutput))
+
+		// Send pending output to agent and wait for response
+		if err := o.runner.SendMessages(o.ctx, []string{pendingOutput}); err != nil {
+			// Check if context was cancelled
+			if o.ctx.Err() != nil {
+				logger.Info("Context cancelled during final delivery")
+				return nil
+			}
+			logger.Error("Final delivery failed: %v", err)
+			// Don't fail - continue to session_end hooks
+		} else {
+			logger.Info("Final delivery completed successfully")
+		}
+	}
+
 	return nil
 }
 
