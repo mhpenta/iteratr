@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -351,6 +352,94 @@ func (o *Orchestrator) Run() error {
 	logger.Debug("ACP session started successfully")
 	// Ensure runner is stopped on exit
 	defer o.runner.Stop()
+
+	// Subscribe to task completion events for on_task_complete hooks
+	var taskCompleteSub *natsgo.Subscription
+	if o.hooksConfig != nil && len(o.hooksConfig.Hooks.OnTaskComplete) > 0 {
+		logger.Debug("Subscribing to task completion events for on_task_complete hooks")
+		subject := fmt.Sprintf("iteratr.%s.task", o.cfg.SessionName)
+		sub, err := o.nc.Subscribe(subject, func(msg *natsgo.Msg) {
+			// Parse event to check if it's a status=completed action
+			var event struct {
+				Action string          `json:"action"`
+				Meta   json.RawMessage `json:"meta"`
+			}
+			if err := json.Unmarshal(msg.Data, &event); err != nil {
+				logger.Warn("Failed to parse task event for on_task_complete: %v", err)
+				return
+			}
+
+			// Only process status=completed events
+			if event.Action != "status" {
+				return
+			}
+
+			var meta struct {
+				TaskID string `json:"task_id"`
+				Status string `json:"status"`
+			}
+			if err := json.Unmarshal(event.Meta, &meta); err != nil {
+				logger.Warn("Failed to parse task event metadata: %v", err)
+				return
+			}
+
+			if meta.Status != "completed" {
+				return
+			}
+
+			// Load current state to get task content
+			state, err := o.store.LoadState(o.ctx, o.cfg.SessionName)
+			if err != nil {
+				logger.Warn("Failed to load state for on_task_complete: %v", err)
+				return
+			}
+
+			task, exists := state.Tasks[meta.TaskID]
+			if !exists {
+				logger.Warn("Task %s not found in state for on_task_complete", meta.TaskID)
+				return
+			}
+
+			// Execute on_task_complete hooks
+			logger.Info("Task %s completed, executing on_task_complete hooks", meta.TaskID)
+			hookVars := hooks.Variables{
+				Session:     o.cfg.SessionName,
+				TaskID:      meta.TaskID,
+				TaskContent: task.Content,
+			}
+			output, err := hooks.ExecuteAllPiped(o.ctx, o.hooksConfig.Hooks.OnTaskComplete, o.cfg.WorkDir, hookVars)
+			if err != nil {
+				// Context cancelled or error - just log
+				if o.ctx.Err() != nil {
+					logger.Debug("Context cancelled during on_task_complete hook execution")
+				} else {
+					logger.Error("on_task_complete hook execution failed: %v", err)
+				}
+				return
+			}
+
+			if output != "" {
+				// Append piped output to pending buffer (FIFO order)
+				logger.Debug("on_task_complete hook output: %d bytes (appending to pending buffer)", len(output))
+				o.appendPendingOutput(output)
+			}
+		})
+		if err != nil {
+			logger.Warn("Failed to subscribe to task completion events: %v", err)
+			// Don't fail - hooks are optional
+		} else {
+			taskCompleteSub = sub
+			logger.Debug("Subscribed to task completion events")
+		}
+	}
+	// Unsubscribe on exit
+	if taskCompleteSub != nil {
+		defer func() {
+			if err := taskCompleteSub.Unsubscribe(); err != nil {
+				logger.Debug("Failed to unsubscribe from task complete: %v", err)
+			}
+		}()
+	}
 
 	// Execute session_start hooks if configured (before iteration loop)
 	if o.hooksConfig != nil && len(o.hooksConfig.Hooks.SessionStart) > 0 {
