@@ -29,11 +29,16 @@ As a developer, I want to verify iteratr works end-to-end so I can catch regress
 - [ ] Edit `/tmp/iteratr-test/config.json` - add new key-value pairs
 - [ ] Edit `/tmp/iteratr-test/notes.md` - append a new section
 
-### 3. File Validation
-- [ ] Read each file and verify edits are present
-- [ ] List all files in `/tmp/iteratr-test/` and confirm count matches expected
+### 3. Research (use subagents for parallel work)
+- [ ] Use a subagent to find all Go files in `internal/tui/` and list their main types
+- [ ] Use a subagent to analyze `internal/session/store.go` and summarize its public API
+- [ ] Write findings to `/tmp/iteratr-test/research.md`
 
-### 4. Cleanup
+### 4. File Validation
+- [ ] Read each file and verify edits are present
+- [ ] List all files in `/tmp/iteratr-test/` and confirm count matches expected (4 files)
+
+### 5. Cleanup
 - [ ] Delete all files in `/tmp/iteratr-test/`
 - [ ] Remove the `/tmp/iteratr-test/` directory
 - [ ] Verify no test artifacts remain
