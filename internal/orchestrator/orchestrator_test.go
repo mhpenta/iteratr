@@ -1,11 +1,16 @@
 package orchestrator
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/mark3labs/iteratr/internal/agent"
+	"github.com/mark3labs/iteratr/internal/session"
 )
 
 // TestGracefulShutdown verifies that the orchestrator shuts down cleanly
@@ -608,5 +613,266 @@ func TestIsGitRepo(t *testing.T) {
 	}
 }
 
-// Suppress unused variable warning
+// TestBuildCommitPrompt verifies that buildCommitPrompt generates correct prompts
+func TestBuildCommitPrompt(t *testing.T) {
+	// Skip if we can't setup NATS (buildCommitPrompt needs real store for LoadState)
+	// But we can test the prompt formatting by creating a minimal orchestrator
+
+	tests := []struct {
+		name                string
+		setupFiles          []fileChange
+		inProgressTaskText  string // If non-empty, creates an in_progress task
+		iterationSummary    string // If non-empty, creates an iteration with summary
+		expectedContains    []string
+		expectedNotContains []string
+	}{
+		{
+			name: "single new file without metadata",
+			setupFiles: []fileChange{
+				{path: "auth.go", isNew: true, additions: 0, deletions: 0},
+			},
+			expectedContains: []string{
+				"Commit the following modified files:",
+				"- auth.go (new file)",
+				"Instructions:",
+				"1. Stage only the listed files with `git add`",
+				"2. Create a commit with a clear, conventional message",
+				"3. Do NOT push",
+			},
+			expectedNotContains: []string{
+				"Context:",
+				"Task:",
+				"Summary:",
+			},
+		},
+		{
+			name: "modified file with additions and deletions",
+			setupFiles: []fileChange{
+				{path: "internal/auth/session.go", isNew: false, additions: 15, deletions: 3},
+			},
+			expectedContains: []string{
+				"Commit the following modified files:",
+				"- internal/auth/session.go (+15/-3)",
+				"Instructions:",
+			},
+			expectedNotContains: []string{
+				"Context:",
+				"(new file)",
+			},
+		},
+		{
+			name: "multiple files with mixed states",
+			setupFiles: []fileChange{
+				{path: "auth.go", isNew: true, additions: 0, deletions: 0},
+				{path: "internal/auth/session.go", isNew: false, additions: 15, deletions: 3},
+				{path: "internal/handler/login.go", isNew: false, additions: 8, deletions: 2},
+			},
+			expectedContains: []string{
+				"- auth.go (new file)",
+				"- internal/auth/session.go (+15/-3)",
+				"- internal/handler/login.go (+8/-2)",
+			},
+			expectedNotContains: []string{
+				"Context:",
+			},
+		},
+		{
+			name: "with in_progress task context",
+			setupFiles: []fileChange{
+				{path: "auth.go", isNew: true, additions: 0, deletions: 0},
+			},
+			inProgressTaskText: "implement JWT authentication",
+			expectedContains: []string{
+				"- auth.go (new file)",
+				"Context:",
+				"- Task: implement JWT authentication",
+			},
+			expectedNotContains: []string{
+				"Summary:",
+			},
+		},
+		{
+			name: "with iteration summary",
+			setupFiles: []fileChange{
+				{path: "auth.go", isNew: true, additions: 0, deletions: 0},
+			},
+			iterationSummary: "Added JWT validation and integrated with login handler",
+			expectedContains: []string{
+				"- auth.go (new file)",
+				"Context:",
+				"- Summary: Added JWT validation and integrated with login handler",
+			},
+			expectedNotContains: []string{
+				"Task:",
+			},
+		},
+		{
+			name: "with both task and iteration summary",
+			setupFiles: []fileChange{
+				{path: "internal/auth/jwt.go", isNew: true, additions: 0, deletions: 0},
+				{path: "internal/auth/session.go", isNew: false, additions: 15, deletions: 3},
+				{path: "internal/handler/login.go", isNew: false, additions: 8, deletions: 2},
+			},
+			inProgressTaskText: "implement JWT authentication",
+			iterationSummary:   "Added JWT validation and integrated with login handler",
+			expectedContains: []string{
+				"Commit the following modified files:",
+				"- internal/auth/jwt.go (new file)",
+				"- internal/auth/session.go (+15/-3)",
+				"- internal/handler/login.go (+8/-2)",
+				"Context:",
+				"- Task: implement JWT authentication",
+				"- Summary: Added JWT validation and integrated with login handler",
+				"Instructions:",
+				"1. Stage only the listed files with `git add`",
+				"2. Create a commit with a clear, conventional message",
+				"3. Do NOT push",
+			},
+		},
+		{
+			name: "modified file without metadata (fallback)",
+			setupFiles: []fileChange{
+				{path: "README.md", isNew: false, additions: 0, deletions: 0},
+			},
+			expectedContains: []string{
+				"- README.md\n", // No +/- counts when metadata unavailable
+			},
+			expectedNotContains: []string{
+				"+0",
+				"-0",
+				"(new file)",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp directory for the test
+			tmpDir := t.TempDir()
+			dataDir := filepath.Join(tmpDir, ".iteratr")
+
+			// Create orchestrator and start it to get a real store
+			orch, err := New(Config{
+				SessionName: "test-build-commit-prompt",
+				SpecPath:    filepath.Join(tmpDir, "test.md"),
+				DataDir:     dataDir,
+				WorkDir:     tmpDir,
+				Headless:    true,
+			})
+			if err != nil {
+				t.Fatalf("failed to create orchestrator: %v", err)
+			}
+
+			// Write a minimal spec file
+			specContent := "# Test\nTest spec for buildCommitPrompt test"
+			if err := os.WriteFile(filepath.Join(tmpDir, "test.md"), []byte(specContent), 0644); err != nil {
+				t.Fatalf("failed to write spec file: %v", err)
+			}
+
+			// Start orchestrator to initialize store
+			if err := orch.Start(); err != nil {
+				t.Fatalf("failed to start orchestrator: %v", err)
+			}
+			defer orch.Stop()
+
+			// Setup test state if needed
+			ctx := context.Background()
+			if tt.inProgressTaskText != "" {
+				// Add an in_progress task
+				if _, err := orch.store.PublishEvent(ctx, session.Event{
+					Session: "test-build-commit-prompt",
+					Type:    "task",
+					Action:  "add",
+					Data:    tt.inProgressTaskText,
+					Meta:    []byte(`{"status":"in_progress"}`),
+				}); err != nil {
+					t.Fatalf("failed to add task: %v", err)
+				}
+			}
+			if tt.iterationSummary != "" {
+				// Add iteration with summary
+				if _, err := orch.store.PublishEvent(ctx, session.Event{
+					Session: "test-build-commit-prompt",
+					Type:    "iteration",
+					Action:  "start",
+					Meta:    []byte(`{"number":1}`),
+				}); err != nil {
+					t.Fatalf("failed to start iteration: %v", err)
+				}
+				if _, err := orch.store.PublishEvent(ctx, session.Event{
+					Session: "test-build-commit-prompt",
+					Type:    "iteration",
+					Action:  "summary",
+					Meta:    []byte(fmt.Sprintf(`{"number":1,"summary":%q}`, tt.iterationSummary)),
+				}); err != nil {
+					t.Fatalf("failed to add iteration summary: %v", err)
+				}
+			}
+
+			// Record file changes in tracker
+			for _, fc := range tt.setupFiles {
+				absPath := filepath.Join(tmpDir, fc.path)
+				orch.fileTracker.RecordChange(absPath, fc.isNew, fc.additions, fc.deletions)
+			}
+
+			// Generate commit prompt
+			prompt := orch.buildCommitPrompt(ctx)
+
+			// Verify expected content
+			for _, expected := range tt.expectedContains {
+				if !containsString(prompt, expected) {
+					t.Errorf("expected prompt to contain %q, but it didn't.\nPrompt:\n%s", expected, prompt)
+				}
+			}
+
+			// Verify unexpected content is absent
+			for _, unexpected := range tt.expectedNotContains {
+				if containsString(prompt, unexpected) {
+					t.Errorf("expected prompt NOT to contain %q, but it did.\nPrompt:\n%s", unexpected, prompt)
+				}
+			}
+
+			// Verify prompt structure is valid (has required sections)
+			if !containsString(prompt, "Commit the following modified files:") {
+				t.Error("prompt missing 'Commit the following modified files:' header")
+			}
+			if !containsString(prompt, "Instructions:") {
+				t.Error("prompt missing 'Instructions:' section")
+			}
+			if !containsString(prompt, "1. Stage only the listed files") {
+				t.Error("prompt missing staging instruction")
+			}
+			if !containsString(prompt, "2. Create a commit") {
+				t.Error("prompt missing commit instruction")
+			}
+			if !containsString(prompt, "3. Do NOT push") {
+				t.Error("prompt missing no-push instruction")
+			}
+		})
+	}
+}
+
+// fileChange represents test data for file modifications
+type fileChange struct {
+	path      string
+	isNew     bool
+	additions int
+	deletions int
+}
+
+// containsString checks if s contains substr
+func containsString(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		func() bool {
+			for i := 0; i <= len(s)-len(substr); i++ {
+				if s[i:i+len(substr)] == substr {
+					return true
+				}
+			}
+			return false
+		}())
+}
+
+// Suppress unused variable/import warnings
 var _ = syscall.SIGTERM
+var _ = agent.FileTracker{}
