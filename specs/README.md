@@ -19,7 +19,8 @@
 | [message-queue-enhancement](./message-queue-enhancement.md) | Draft | Replace UI-layer single-message queue with orchestrator-layer FIFO queue (crush pattern) |
 | [build-wizard](./build-wizard.md) | Draft | Interactive wizard for `iteratr build` when no spec provided |
 | [wizard-session-selector](./wizard-session-selector.md) | Draft | Resume existing sessions or start new from wizard step 0 |
-| [hooks](./hooks.md) | Active | Pre-iteration hooks for injecting dynamic context via shell commands |
+| [hooks](./hooks.md) | Complete | Pre-iteration hooks for injecting dynamic context via shell commands |
+| [extended-hooks](./extended-hooks.md) | Draft | Full lifecycle hooks: session_start/end, post_iteration, on_task_complete, on_error, pipe_output |
 | [theme-system](./theme-system.md) | Draft | Centralized theme package for consistent colors/styles (crush pattern) |
 | [file-tracking](./file-tracking.md) | Draft | Track modified files during iteration for auto-commit |
 | [subagent-viewer](./subagent-viewer.md) | Draft | Display subagent calls as clickable messages with session viewer modal |
