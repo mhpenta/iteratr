@@ -37,6 +37,10 @@ release:
     # Quick install (recommended)
     curl -sSL https://raw.githubusercontent.com/mark3labs/iteratr/main/install.sh | sh
 
+    # Bun / npm
+    bun add -g iteratr
+    # or: npm install -g iteratr
+
     # Go install (requires Go 1.25+)
     go install github.com/mark3labs/iteratr/cmd/iteratr@latest
 

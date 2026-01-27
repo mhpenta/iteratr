@@ -877,6 +877,175 @@ func containsString(s, substr string) bool {
 		}())
 }
 
+// TestFileTrackingIntegration verifies that files are tracked correctly during an iteration
+func TestFileTrackingIntegration(t *testing.T) {
+	// This test requires a real agent execution environment, so we simulate file changes
+	// by directly calling the file tracker callbacks
+
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, ".iteratr")
+
+	// Create a test spec
+	specPath := filepath.Join(tmpDir, "test.md")
+	specContent := `# File Tracking Test
+Test spec for verifying file tracking integration.
+
+## Tasks
+- [ ] Create test files
+`
+	if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
+		t.Fatalf("failed to write spec file: %v", err)
+	}
+
+	// Track received file changes
+	var receivedChanges []agent.FileChange
+	var changesMu struct {
+		mu      *testing.T
+		changes *[]agent.FileChange
+	}
+	changesMu.mu = t
+	changesMu.changes = &receivedChanges
+
+	// Create orchestrator
+	orch, err := New(Config{
+		SessionName: "test-file-tracking",
+		SpecPath:    specPath,
+		DataDir:     dataDir,
+		WorkDir:     tmpDir,
+		Headless:    true,
+		AutoCommit:  false, // Disable auto-commit for this test
+	})
+	if err != nil {
+		t.Fatalf("failed to create orchestrator: %v", err)
+	}
+
+	if err := orch.Start(); err != nil {
+		t.Fatalf("failed to start orchestrator: %v", err)
+	}
+	defer func() {
+		if err := orch.Stop(); err != nil {
+			t.Errorf("failed to stop orchestrator: %v", err)
+		}
+	}()
+
+	// Verify file tracker is initialized
+	if orch.fileTracker == nil {
+		t.Fatal("fileTracker was not initialized")
+	}
+
+	// Simulate iteration start - clear tracker
+	orch.fileTracker.Clear()
+	if orch.fileTracker.Count() != 0 {
+		t.Errorf("expected tracker to be empty after clear, got %d files", orch.fileTracker.Count())
+	}
+
+	// Simulate agent file operations
+	testCases := []struct {
+		path      string
+		isNew     bool
+		additions int
+		deletions int
+	}{
+		{filepath.Join(tmpDir, "auth.go"), true, 0, 0},                    // New file
+		{filepath.Join(tmpDir, "internal/auth/session.go"), false, 15, 3}, // Modified with metadata
+		{filepath.Join(tmpDir, "internal/handler/login.go"), false, 8, 2}, // Modified with metadata
+		{filepath.Join(tmpDir, "auth.go"), false, 5, 0},                   // Second edit to same file (should deduplicate)
+		{filepath.Join(tmpDir, "internal/auth/session.go"), false, 20, 5}, // Second edit (should update)
+	}
+
+	for _, tc := range testCases {
+		orch.fileTracker.RecordChange(tc.path, tc.isNew, tc.additions, tc.deletions)
+	}
+
+	// Verify file tracking results
+	if orch.fileTracker.Count() != 3 {
+		t.Errorf("expected 3 unique files, got %d", orch.fileTracker.Count())
+	}
+
+	if !orch.fileTracker.HasChanges() {
+		t.Error("expected HasChanges() to be true")
+	}
+
+	changes := orch.fileTracker.Changes()
+	if len(changes) != 3 {
+		t.Errorf("expected 3 changes, got %d", len(changes))
+	}
+
+	// Verify specific files and their metadata
+	expectedFiles := map[string]struct {
+		isNew     bool
+		additions int
+		deletions int
+	}{
+		"auth.go":                   {isNew: false, additions: 5, deletions: 0},  // Last edit wins
+		"internal/auth/session.go":  {isNew: false, additions: 20, deletions: 5}, // Last edit wins
+		"internal/handler/login.go": {isNew: false, additions: 8, deletions: 2},
+	}
+
+	for _, change := range changes {
+		expected, ok := expectedFiles[change.Path]
+		if !ok {
+			t.Errorf("unexpected file in changes: %s", change.Path)
+			continue
+		}
+
+		if change.IsNew != expected.isNew {
+			t.Errorf("file %s: expected isNew=%v, got %v", change.Path, expected.isNew, change.IsNew)
+		}
+		if change.Additions != expected.additions {
+			t.Errorf("file %s: expected additions=%d, got %d", change.Path, expected.additions, change.Additions)
+		}
+		if change.Deletions != expected.deletions {
+			t.Errorf("file %s: expected deletions=%d, got %d", change.Path, expected.deletions, change.Deletions)
+		}
+
+		// Verify absolute path is correct
+		expectedAbsPath := filepath.Join(tmpDir, change.Path)
+		if change.AbsPath != expectedAbsPath {
+			t.Errorf("file %s: expected absPath=%s, got %s", change.Path, expectedAbsPath, change.AbsPath)
+		}
+	}
+
+	// Verify ModifiedPaths returns sorted list
+	paths := orch.fileTracker.ModifiedPaths()
+	if len(paths) != 3 {
+		t.Errorf("expected 3 paths, got %d", len(paths))
+	}
+
+	// Paths should be sorted
+	for i := 1; i < len(paths); i++ {
+		if paths[i-1] >= paths[i] {
+			t.Errorf("paths not sorted: %s >= %s", paths[i-1], paths[i])
+		}
+	}
+
+	// Test Get() method
+	change := orch.fileTracker.Get("auth.go")
+	if change == nil {
+		t.Error("expected Get('auth.go') to return non-nil")
+	} else if change.Path != "auth.go" {
+		t.Errorf("expected path 'auth.go', got %s", change.Path)
+	}
+
+	// Test Get() with non-existent path
+	nonExistent := orch.fileTracker.Get("does-not-exist.go")
+	if nonExistent != nil {
+		t.Error("expected Get('does-not-exist.go') to return nil")
+	}
+
+	// Test Clear() resets state
+	orch.fileTracker.Clear()
+	if orch.fileTracker.Count() != 0 {
+		t.Errorf("expected count=0 after Clear(), got %d", orch.fileTracker.Count())
+	}
+	if orch.fileTracker.HasChanges() {
+		t.Error("expected HasChanges()=false after Clear()")
+	}
+	if len(orch.fileTracker.Changes()) != 0 {
+		t.Errorf("expected empty Changes() after Clear(), got %d", len(orch.fileTracker.Changes()))
+	}
+}
+
 // Suppress unused variable/import warnings
 var _ = syscall.SIGTERM
 var _ = agent.FileTracker{}

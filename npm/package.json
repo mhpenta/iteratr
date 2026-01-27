@@ -1,0 +1,41 @@
+{
+  "name": "iteratr",
+  "version": "0.0.0",
+  "description": "AI-powered CLI tool",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mark3labs/iteratr.git"
+  },
+  "homepage": "https://github.com/mark3labs/iteratr",
+  "bugs": {
+    "url": "https://github.com/mark3labs/iteratr/issues"
+  },
+  "license": "MIT",
+  "bin": {
+    "iteratr": "bin/iteratr"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "bin",
+    "install.js"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "keywords": [
+    "cli",
+    "iteratr",
+    "ai"
+  ]
+}
