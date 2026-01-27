@@ -11,6 +11,13 @@ type FileDiff struct {
 	Deletions int    // Number of deleted lines
 }
 
+// DiffBlock represents a single diff from a tool_call_update content array.
+type DiffBlock struct {
+	Path    string // Absolute file path
+	OldText string // Content before change (empty for new files)
+	NewText string // Content after change
+}
+
 // ToolCallEvent represents a tool lifecycle event from ACP.
 // Used to track tool calls from pending → in_progress → completed/error/canceled.
 type ToolCallEvent struct {
@@ -21,6 +28,7 @@ type ToolCallEvent struct {
 	Output     string         // Tool output (populated on completed/error)
 	Kind       string         // "execute", etc.
 	FileDiff   *FileDiff      // File diff data (populated on completed edit tools)
+	DiffBlocks []DiffBlock    // Diff blocks from content array (populated on completed edit tools)
 }
 
 // FinishEvent represents the completion of an agent iteration.

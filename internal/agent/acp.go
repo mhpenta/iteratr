@@ -364,6 +364,8 @@ func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, 
 					// Extract filediff from rawOutput metadata for edit tools
 					if tcu.Status == "completed" && tcu.Kind == "edit" {
 						event.FileDiff = extractFileDiff(tcu.RawOutput)
+						// Extract diff blocks from content array
+						event.DiffBlocks = extractDiffBlocks(tcu.Content)
 					}
 					onToolCall(event)
 				}
@@ -479,6 +481,22 @@ func extractFileDiff(rawOutput map[string]any) *FileDiff {
 		result.Deletions = int(d)
 	}
 	return result
+}
+
+// extractDiffBlocks parses diff blocks from tool_call_update content array.
+// Returns diff blocks with path, oldText, newText extracted from type:"diff" blocks.
+func extractDiffBlocks(content []toolCallContent) []DiffBlock {
+	var blocks []DiffBlock
+	for _, c := range content {
+		if c.Type == "diff" {
+			blocks = append(blocks, DiffBlock{
+				Path:    c.Path,
+				OldText: c.OldText,
+				NewText: c.NewText,
+			})
+		}
+	}
+	return blocks
 }
 
 type jsonRPCRequest struct {
