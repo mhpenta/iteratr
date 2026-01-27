@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -559,7 +560,88 @@ func (o *Orchestrator) runAutoCommit(ctx context.Context) error {
 	}
 
 	logger.Info("Running auto-commit for %d modified file(s)", o.fileTracker.Count())
+
+	// Build commit prompt with file list and context
+	prompt := o.buildCommitPrompt(ctx)
+
+	// Reuse existing Runner - send commit prompt to current ACP session
+	// This is faster than spawning a new subprocess and the session already
+	// has context about what work was done
+	logger.Debug("Sending commit prompt to existing ACP session")
+	if err := o.runner.SendMessages(ctx, []string{prompt}); err != nil {
+		return fmt.Errorf("failed to send commit prompt: %w", err)
+	}
+
+	logger.Info("Auto-commit request sent successfully")
 	return nil
+}
+
+// buildCommitPrompt generates a commit prompt with modified file list and context.
+// Includes: file paths with +/- counts, current task, iteration summary.
+func (o *Orchestrator) buildCommitPrompt(ctx context.Context) string {
+	// Get modified files list
+	paths := o.fileTracker.ModifiedPaths()
+
+	// Get context from session store
+	state, err := o.store.LoadState(ctx, o.cfg.SessionName)
+	if err != nil {
+		logger.Warn("Failed to load session state for commit prompt: %v", err)
+		// Continue without context - still provide file list
+	}
+
+	// Find in_progress task (if any) for context
+	var currentTask string
+	if state != nil {
+		for _, t := range state.Tasks {
+			if t.Status == "in_progress" {
+				currentTask = t.Content
+				break
+			}
+		}
+	}
+
+	// Get latest iteration summary (if any)
+	var iterationSummary string
+	if state != nil && len(state.Iterations) > 0 {
+		lastIter := state.Iterations[len(state.Iterations)-1]
+		iterationSummary = lastIter.Summary
+	}
+
+	// Build prompt
+	var sb strings.Builder
+	sb.WriteString("Commit the following modified files:\n\n")
+	for _, p := range paths {
+		change := o.fileTracker.Get(p)
+		if change == nil {
+			continue
+		}
+		if change.IsNew {
+			sb.WriteString(fmt.Sprintf("- %s (new file)\n", p))
+		} else if change.Additions > 0 || change.Deletions > 0 {
+			sb.WriteString(fmt.Sprintf("- %s (+%d/-%d)\n", p, change.Additions, change.Deletions))
+		} else {
+			// No metadata available
+			sb.WriteString(fmt.Sprintf("- %s\n", p))
+		}
+	}
+
+	// Add context if available
+	if currentTask != "" || iterationSummary != "" {
+		sb.WriteString("\nContext:\n")
+		if currentTask != "" {
+			sb.WriteString(fmt.Sprintf("- Task: %s\n", currentTask))
+		}
+		if iterationSummary != "" {
+			sb.WriteString(fmt.Sprintf("- Summary: %s\n", iterationSummary))
+		}
+	}
+
+	sb.WriteString("\nInstructions:\n")
+	sb.WriteString("1. Stage only the listed files with `git add`\n")
+	sb.WriteString("2. Create a commit with a clear, conventional message\n")
+	sb.WriteString("3. Do NOT push\n")
+
+	return sb.String()
 }
 
 // Stop gracefully shuts down all components.
