@@ -39,6 +39,10 @@ type SubagentModal struct {
 	// Context for cancellation
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// Mouse interaction support
+	viewportArea      uv.Rectangle // Screen area where content is drawn (for mouse hit detection)
+	messageLineStarts []int        // Start line index in content for each message
 }
 
 // NewSubagentModal creates a new SubagentModal.
@@ -169,12 +173,52 @@ func (m *SubagentModal) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 			logger.Debug("subagent modal Draw: no messages to display")
 		}
 
+		// Pad content to fill available height so hint stays at bottom
+		// Count actual lines in listContent
+		actualLines := strings.Count(listContent, "\n") + 1
+		if listContent == "" {
+			actualLines = 0
+		}
+		if actualLines < contentHeight {
+			padding := strings.Repeat("\n", contentHeight-actualLines)
+			listContent = listContent + padding
+		}
+
 		content = strings.Join([]string{
 			title,
 			separator,
 			listContent,
 		}, "\n")
 		hint = RenderHintBar(KeyEsc, "close", KeyUpDown, "scroll")
+
+		// Calculate viewport area for mouse interaction
+		// Modal border/padding: 1 top padding, 3 left (border 1 + padding 2)
+		titleLines := 1
+		separatorLines := 1
+		topPadding := 1
+		leftPadding := 3
+
+		// Calculate modal position (will be centered on screen)
+		modalX := (area.Dx() - modalWidth) / 2
+		modalY := (area.Dy() - modalHeight) / 2
+		if modalX < 0 {
+			modalX = 0
+		}
+		if modalY < 0 {
+			modalY = 0
+		}
+
+		// Viewport area within the modal
+		m.viewportArea = uv.Rectangle{
+			Min: uv.Position{
+				X: area.Min.X + modalX + leftPadding,
+				Y: area.Min.Y + modalY + topPadding + titleLines + separatorLines,
+			},
+			Max: uv.Position{
+				X: area.Min.X + modalX + leftPadding + contentWidth,
+				Y: area.Min.Y + modalY + topPadding + titleLines + separatorLines + contentHeight,
+			},
+		}
 	}
 
 	// Add hint at bottom
@@ -452,13 +496,33 @@ func (m *SubagentModal) appendUserMessage(text string) {
 
 // refreshContent updates the ScrollList with the current message items.
 func (m *SubagentModal) refreshContent() {
-	if m.scrollList != nil {
-		// Convert []MessageItem to []ScrollItem
-		items := make([]ScrollItem, len(m.messages))
-		for i, msg := range m.messages {
-			items[i] = msg
+	if m.scrollList == nil {
+		return
+	}
+
+	// Convert []MessageItem to []ScrollItem
+	items := make([]ScrollItem, len(m.messages))
+	for i, msg := range m.messages {
+		items[i] = msg
+	}
+	m.scrollList.SetItems(items)
+
+	// Compute messageLineStarts for click-to-expand hit detection
+	m.messageLineStarts = make([]int, len(items))
+	offset := 0
+	for i, item := range items {
+		m.messageLineStarts[i] = offset
+		h := item.Height()
+		if h == 0 {
+			item.Render(m.scrollList.width)
+			h = item.Height()
 		}
-		m.scrollList.SetItems(items)
+		offset += h
+	}
+
+	// Auto-scroll to bottom if enabled
+	if m.scrollList.autoScroll {
+		m.scrollList.GotoBottom()
 	}
 }
 
@@ -473,6 +537,59 @@ func convertFileDiff(agentDiff *agent.FileDiff) *FileDiff {
 		After:     agentDiff.After,
 		Additions: agentDiff.Additions,
 		Deletions: agentDiff.Deletions,
+	}
+}
+
+// HandleClick processes a mouse click at screen coordinates (x, y).
+// Returns nil after toggling an expandable message.
+func (m *SubagentModal) HandleClick(x, y int) tea.Cmd {
+	if len(m.messageLineStarts) == 0 || m.scrollList == nil {
+		return nil
+	}
+
+	// Check if click is within the viewport area
+	if x < m.viewportArea.Min.X || x >= m.viewportArea.Max.X ||
+		y < m.viewportArea.Min.Y || y >= m.viewportArea.Max.Y {
+		return nil
+	}
+
+	// Translate screen Y to content line (accounting for scroll offset)
+	contentLine := (y - m.viewportArea.Min.Y) + m.scrollList.currentOffsetInLines()
+
+	// Find which message this line belongs to
+	msgIdx := -1
+	for i := len(m.messageLineStarts) - 1; i >= 0; i-- {
+		if contentLine >= m.messageLineStarts[i] {
+			msgIdx = i
+			break
+		}
+	}
+
+	if msgIdx < 0 || msgIdx >= len(m.messages) {
+		return nil
+	}
+
+	// Toggle if expandable
+	if expandable, ok := m.messages[msgIdx].(Expandable); ok {
+		expandable.ToggleExpanded()
+		m.refreshContent()
+	}
+
+	return nil
+}
+
+// ScrollViewport scrolls the modal content by the given number of lines.
+// Positive values scroll down, negative values scroll up.
+func (m *SubagentModal) ScrollViewport(lines int) {
+	if m.scrollList == nil {
+		return
+	}
+	m.scrollList.ScrollBy(lines)
+	// Disable auto-scroll when user scrolls up
+	if lines < 0 {
+		m.scrollList.SetAutoScroll(false)
+	} else if m.scrollList.AtBottom() {
+		m.scrollList.SetAutoScroll(true)
 	}
 }
 

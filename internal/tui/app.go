@@ -413,6 +413,14 @@ func (a *App) handleMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return a, a.dialog.HandleClick(mouse.X, mouse.Y)
 	}
 
+	// Subagent modal takes priority when visible - handle clicks for expand/collapse
+	if a.subagentModal != nil {
+		// Handle click within modal (for expand/collapse on messages)
+		a.subagentModal.HandleClick(mouse.X, mouse.Y)
+		// All clicks are consumed when modal is visible
+		return a, nil
+	}
+
 	// Check if note input modal is open - handle button clicks or close
 	if a.noteInputModal.IsVisible() {
 		if cmd := a.noteInputModal.HandleClick(mouse.X, mouse.Y); cmd != nil {
@@ -534,6 +542,12 @@ func (a *App) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelDown:
 		lines = scrollLines
 	default:
+		return a, nil
+	}
+
+	// Subagent modal takes priority - scroll modal content when visible
+	if a.subagentModal != nil {
+		a.subagentModal.ScrollViewport(lines)
 		return a, nil
 	}
 
