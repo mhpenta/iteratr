@@ -285,7 +285,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.subagentModal = modal
 		return a, modal.Start() // Spawns ACP, loads session, starts streaming (TAS-16)
 
-	case SubagentTextMsg, SubagentToolCallMsg, SubagentThinkingMsg, SubagentUserMsg:
+	case SubagentTextMsg, SubagentToolCallMsg, SubagentThinkingMsg, SubagentUserMsg, SubagentStreamMsg:
 		// Forward streaming messages to modal (TAS-17, TAS-18)
 		if a.subagentModal != nil {
 			return a, a.subagentModal.HandleUpdate(msg)
@@ -894,6 +894,11 @@ type SubagentDoneMsg struct{}
 // SubagentErrorMsg is sent when the subagent modal encounters an error during session loading or streaming.
 type SubagentErrorMsg struct {
 	Err error
+}
+
+// SubagentStreamMsg is sent to continue streaming when an unknown notification is received.
+type SubagentStreamMsg struct {
+	Continue bool // Always true to continue streaming
 }
 
 // propagateSizes updates component sizes based on the current layout.

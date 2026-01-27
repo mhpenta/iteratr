@@ -333,6 +333,119 @@ func (s *SessionLoader) ReadMessage() (*jsonRPCResponse, error) {
 	return s.conn.readMessage()
 }
 
+// ReadAndProcess reads one notification and calls the appropriate callback.
+// Returns true if a message was processed, false if EOF or unknown notification.
+// Callbacks are: onText, onToolCall, onThinking, onUser
+func (s *SessionLoader) ReadAndProcess(
+	onText func(string),
+	onToolCall func(ToolCallEvent),
+	onThinking func(string),
+	onUser func(string),
+) (bool, error) {
+	resp, err := s.conn.readMessage()
+	if err != nil {
+		return false, err
+	}
+
+	// Only process session/update notifications
+	if resp.ID != nil || resp.Method != "session/update" {
+		return true, nil // Continue streaming, but nothing processed
+	}
+
+	var updateParams sessionUpdateParams
+	if err := json.Unmarshal(resp.Params, &updateParams); err != nil {
+		logger.Warn("Failed to parse session/update params: %v", err)
+		return true, nil // Continue streaming
+	}
+
+	// Discriminate by sessionUpdate field
+	var update sessionUpdate
+	if err := json.Unmarshal(updateParams.Update, &update); err != nil {
+		logger.Warn("Failed to parse session update: %v", err)
+		return true, nil // Continue streaming
+	}
+
+	switch update.SessionUpdate {
+	case "agent_message_chunk":
+		var chunk agentMessageChunk
+		if err := json.Unmarshal(updateParams.Update, &chunk); err != nil {
+			logger.Warn("Failed to parse agent_message_chunk: %v", err)
+			return true, nil
+		}
+		if onText != nil {
+			onText(chunk.Content.Text)
+		}
+
+	case "agent_thought_chunk":
+		var chunk agentThoughtChunk
+		if err := json.Unmarshal(updateParams.Update, &chunk); err != nil {
+			logger.Warn("Failed to parse agent_thought_chunk: %v", err)
+			return true, nil
+		}
+		if onThinking != nil {
+			onThinking(chunk.Content.Text)
+		}
+
+	case "tool_call":
+		var tc toolCall
+		if err := json.Unmarshal(updateParams.Update, &tc); err != nil {
+			logger.Warn("Failed to parse tool_call: %v", err)
+			return true, nil
+		}
+		if onToolCall != nil {
+			onToolCall(ToolCallEvent{
+				ToolCallID: tc.ToolCallID,
+				Title:      tc.Title,
+				Status:     tc.Status,
+				Kind:       tc.Kind,
+				RawInput:   tc.RawInput,
+			})
+		}
+
+	case "tool_call_update":
+		var tcu toolCallUpdate
+		if err := json.Unmarshal(updateParams.Update, &tcu); err != nil {
+			logger.Warn("Failed to parse tool_call_update: %v", err)
+			return true, nil
+		}
+		event := ToolCallEvent{
+			ToolCallID: tcu.ToolCallID,
+			Title:      tcu.Title,
+			Status:     tcu.Status,
+			Kind:       tcu.Kind,
+			RawInput:   tcu.RawInput,
+		}
+		// Extract output from completed or error tool calls
+		if (tcu.Status == "completed" || tcu.Status == "error") && len(tcu.Content) > 0 {
+			event.Output = tcu.Content[0].Content.Text
+		}
+		if onToolCall != nil {
+			onToolCall(event)
+		}
+
+	case "user_message_chunk":
+		// User message chunks use the same structure as agent message chunks
+		var chunk agentMessageChunk
+		if err := json.Unmarshal(updateParams.Update, &chunk); err != nil {
+			logger.Warn("Failed to parse user_message_chunk: %v", err)
+			return true, nil
+		}
+		if onUser != nil {
+			onUser(chunk.Content.Text)
+		}
+
+	case "available_commands_update":
+		// Skip this notification type
+		return true, nil
+
+	default:
+		logger.Debug("Unknown session update type: %s", update.SessionUpdate)
+		return true, nil
+	}
+
+	return true, nil
+}
+
 // Close terminates the ACP subprocess and cleans up resources.
 func (s *SessionLoader) Close() error {
 	// Close connection

@@ -219,15 +219,249 @@ func (m *SubagentModal) Update(msg tea.Msg) tea.Cmd {
 // HandleUpdate processes streaming messages from the subagent session.
 // Returns a command to continue streaming if Continue is true.
 func (m *SubagentModal) HandleUpdate(msg tea.Msg) tea.Cmd {
-	// This will be implemented in task TAS-17 (continuous streaming)
+	switch msg := msg.(type) {
+	case SubagentTextMsg:
+		m.appendText(msg.Text)
+		if msg.Continue {
+			return m.streamNext
+		}
+
+	case SubagentToolCallMsg:
+		m.appendToolCall(msg.Event)
+		if msg.Continue {
+			return m.streamNext
+		}
+
+	case SubagentThinkingMsg:
+		m.appendThinking(msg.Content)
+		if msg.Continue {
+			return m.streamNext
+		}
+
+	case SubagentUserMsg:
+		m.appendUserMessage(msg.Text)
+		if msg.Continue {
+			return m.streamNext
+		}
+
+	case SubagentStreamMsg:
+		if msg.Continue {
+			return m.streamNext
+		}
+	}
+
 	return nil
 }
 
 // streamNext reads the next message from the session stream and returns a tea.Cmd.
-// This will be implemented in task TAS-17 (continuous streaming).
+// Runs in a background goroutine to avoid blocking the TUI event loop.
 func (m *SubagentModal) streamNext() tea.Msg {
-	// Placeholder - will be implemented in TAS-17
-	return SubagentDoneMsg{}
+	// Guard: loader must be initialized
+	if m.loader == nil {
+		return SubagentDoneMsg{}
+	}
+
+	// Read and process one notification from session stream
+	// The loader calls our callbacks which capture the data
+	var textData string
+	var toolData agent.ToolCallEvent
+	var thinkingData string
+	var userData string
+	var msgType string // "text", "tool", "thinking", "user", ""
+
+	processed, err := m.loader.ReadAndProcess(
+		func(text string) {
+			textData = text
+			msgType = "text"
+		},
+		func(event agent.ToolCallEvent) {
+			toolData = event
+			msgType = "tool"
+		},
+		func(content string) {
+			thinkingData = content
+			msgType = "thinking"
+		},
+		func(text string) {
+			userData = text
+			msgType = "user"
+		},
+	)
+
+	if err != nil {
+		// EOF means session replay is complete
+		if err.Error() == "EOF" {
+			return SubagentDoneMsg{}
+		}
+		// Other errors are real failures
+		logger.Warn("Failed to read session message: %v", err)
+		return SubagentErrorMsg{Err: fmt.Errorf("stream error: %w", err)}
+	}
+
+	if !processed {
+		// No more messages
+		return SubagentDoneMsg{}
+	}
+
+	// Return appropriate message based on what was processed
+	switch msgType {
+	case "text":
+		return SubagentTextMsg{Text: textData, Continue: true}
+	case "tool":
+		return SubagentToolCallMsg{Event: toolData, Continue: true}
+	case "thinking":
+		return SubagentThinkingMsg{Content: thinkingData, Continue: true}
+	case "user":
+		return SubagentUserMsg{Text: userData, Continue: true}
+	default:
+		// Unknown or skipped notification - continue streaming
+		return SubagentStreamMsg{Continue: true}
+	}
+}
+
+// appendText appends agent text content to the message list.
+// Mirrors AgentOutput.AppendText behavior.
+func (m *SubagentModal) appendText(content string) {
+	// If last message is a TextMessageItem, append to it
+	if len(m.messages) > 0 {
+		if textMsg, ok := m.messages[len(m.messages)-1].(*TextMessageItem); ok {
+			textMsg.content += content
+			// Invalidate cache - ScrollList will re-render on next View() call
+			textMsg.cachedWidth = 0
+			// Auto-scroll to bottom if needed
+			if m.scrollList != nil && m.scrollList.autoScroll {
+				m.scrollList.GotoBottom()
+			}
+			return
+		}
+	}
+
+	// Create new TextMessageItem
+	newMsg := &TextMessageItem{
+		id:      fmt.Sprintf("text-%d", len(m.messages)),
+		content: content,
+	}
+	m.messages = append(m.messages, newMsg)
+	m.refreshContent()
+}
+
+// appendToolCall appends or updates a tool call in the message list.
+// Mirrors AgentOutput.AppendToolCall behavior.
+func (m *SubagentModal) appendToolCall(event agent.ToolCallEvent) {
+	idx, exists := m.toolIndex[event.ToolCallID]
+	if !exists {
+		// Map status strings to ToolStatus enum
+		status := mapToolStatus(event.Status)
+
+		// Create new ToolMessageItem (always use ToolMessageItem, not SubagentMessageItem)
+		newMsg := &ToolMessageItem{
+			id:       event.ToolCallID,
+			toolName: event.Title,
+			status:   status,
+			input:    event.RawInput,
+			output:   event.Output,
+			kind:     event.Kind,
+			fileDiff: convertFileDiff(event.FileDiff),
+		}
+		m.messages = append(m.messages, newMsg)
+		m.toolIndex[event.ToolCallID] = len(m.messages) - 1
+		m.refreshContent()
+	} else {
+		// Update existing ToolMessageItem
+		if toolMsg, ok := m.messages[idx].(*ToolMessageItem); ok {
+			toolMsg.status = mapToolStatus(event.Status)
+			if event.RawInput != nil {
+				toolMsg.input = event.RawInput
+			}
+			if event.Output != "" {
+				toolMsg.output = event.Output
+			}
+			if event.FileDiff != nil {
+				toolMsg.fileDiff = convertFileDiff(event.FileDiff)
+			}
+			// Invalidate cache
+			toolMsg.cachedWidth = 0
+			m.refreshContent()
+		}
+	}
+}
+
+// appendThinking appends agent thinking content to the message list.
+// Mirrors AgentOutput.AppendThinking behavior.
+func (m *SubagentModal) appendThinking(content string) {
+	// If last message is a ThinkingMessageItem, append to it
+	if len(m.messages) > 0 {
+		if thinkingMsg, ok := m.messages[len(m.messages)-1].(*ThinkingMessageItem); ok {
+			thinkingMsg.content += content
+			// Invalidate cache
+			thinkingMsg.cachedWidth = 0
+			// Auto-scroll to bottom if needed
+			if m.scrollList != nil && m.scrollList.autoScroll {
+				m.scrollList.GotoBottom()
+			}
+			return
+		}
+	}
+
+	// Create new ThinkingMessageItem
+	newMsg := &ThinkingMessageItem{
+		id:      fmt.Sprintf("thinking-%d", len(m.messages)),
+		content: content,
+	}
+	m.messages = append(m.messages, newMsg)
+	m.refreshContent()
+}
+
+// appendUserMessage appends a user message to the message list.
+// Mirrors AgentOutput.AppendUserMessage behavior.
+func (m *SubagentModal) appendUserMessage(text string) {
+	// If last message is a UserMessageItem, append to it
+	if len(m.messages) > 0 {
+		if userMsg, ok := m.messages[len(m.messages)-1].(*UserMessageItem); ok {
+			userMsg.content += text
+			// Invalidate cache
+			userMsg.cachedWidth = 0
+			// Auto-scroll to bottom if needed
+			if m.scrollList != nil && m.scrollList.autoScroll {
+				m.scrollList.GotoBottom()
+			}
+			return
+		}
+	}
+
+	// Create new UserMessageItem
+	newMsg := &UserMessageItem{
+		id:      fmt.Sprintf("user-%d", len(m.messages)),
+		content: text,
+	}
+	m.messages = append(m.messages, newMsg)
+	m.refreshContent()
+}
+
+// refreshContent updates the ScrollList with the current message items.
+func (m *SubagentModal) refreshContent() {
+	if m.scrollList != nil {
+		// Convert []MessageItem to []ScrollItem
+		items := make([]ScrollItem, len(m.messages))
+		for i, msg := range m.messages {
+			items[i] = msg
+		}
+		m.scrollList.SetItems(items)
+	}
+}
+
+// convertFileDiff converts agent.FileDiff to local FileDiff type.
+func convertFileDiff(agentDiff *agent.FileDiff) *FileDiff {
+	if agentDiff == nil {
+		return nil
+	}
+	return &FileDiff{
+		File:      agentDiff.File,
+		Before:    agentDiff.Before,
+		After:     agentDiff.After,
+		Additions: agentDiff.Additions,
+		Deletions: agentDiff.Deletions,
+	}
 }
 
 // Close terminates the ACP subprocess and cleans up resources.
