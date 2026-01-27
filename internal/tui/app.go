@@ -795,6 +795,14 @@ type CreateTaskMsg struct {
 	Iteration int
 }
 
+// FileChangeMsg is sent when a file is modified during an iteration.
+type FileChangeMsg struct {
+	Path      string
+	IsNew     bool
+	Additions int
+	Deletions int
+}
+
 // propagateSizes updates component sizes based on the current layout.
 // This is called when the layout changes (on window resize or mode switch).
 func (a *App) propagateSizes() {
