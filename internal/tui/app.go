@@ -745,6 +745,7 @@ type AgentToolCallMsg struct {
 	Input      map[string]any
 	Output     string
 	FileDiff   *FileDiff
+	SessionID  string // Session ID for subagent tasks (from rawOutput.metadata.sessionId)
 }
 
 type AgentThinkingMsg struct {
