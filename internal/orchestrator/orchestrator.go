@@ -577,9 +577,56 @@ func (o *Orchestrator) Run() error {
 			var panicErr *ierr.PanicError
 			if errors.As(err, &panicErr) {
 				logger.Error("Iteration #%d panicked with stack trace: %s", currentIteration, panicErr.StackTrace)
-				return fmt.Errorf("iteration #%d panicked: %w", currentIteration, err)
 			}
 
+			// Execute on_error hooks if configured
+			if o.hooksConfig != nil && len(o.hooksConfig.Hooks.OnError) > 0 {
+				logger.Info("Executing on_error hooks for iteration #%d", currentIteration)
+				hookVars := hooks.Variables{
+					Session:   o.cfg.SessionName,
+					Iteration: strconv.Itoa(currentIteration),
+					Error:     err.Error(),
+				}
+				hookOutput, hookErr := hooks.ExecuteAllPiped(o.ctx, o.hooksConfig.Hooks.OnError, o.cfg.WorkDir, hookVars)
+				if hookErr != nil {
+					// Context cancelled - propagate
+					if o.ctx.Err() != nil {
+						logger.Info("Context cancelled during on_error hook execution")
+						return nil
+					}
+					logger.Error("on_error hook execution failed: %v", hookErr)
+					// Continue despite hook failure
+				}
+
+				// If hooks produced piped output, send to agent for immediate recovery
+				if hookOutput != "" {
+					logger.Info("Sending on_error hook output to agent for recovery attempt")
+					recoveryPrompt := fmt.Sprintf("The previous iteration failed with error: %s\n\nDiagnostic output from error hooks:\n%s\n\nPlease analyze the error and continue with the next task.", err.Error(), hookOutput)
+
+					// Send recovery prompt and wait for response
+					recoveryErr := o.runner.SendMessages(o.ctx, []string{recoveryPrompt})
+					if recoveryErr != nil {
+						if o.ctx.Err() != nil {
+							logger.Info("Context cancelled during recovery prompt")
+							return nil
+						}
+						logger.Error("Failed to send recovery prompt to agent: %v", recoveryErr)
+						// Continue to next iteration despite recovery failure
+					} else {
+						logger.Info("Recovery prompt sent successfully")
+					}
+				}
+
+				// Continue to next iteration (don't exit session when hooks configured)
+				logger.Info("Continuing to next iteration after error")
+				continue
+			}
+
+			// No on_error hooks configured - return error (backward compatible)
+			// Check if it's a panic error - these are critical
+			if errors.As(err, &panicErr) {
+				return fmt.Errorf("iteration #%d panicked: %w", currentIteration, err)
+			}
 			// For other errors, return immediately
 			return fmt.Errorf("iteration #%d failed: %w", currentIteration, err)
 		}
