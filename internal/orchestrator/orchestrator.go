@@ -513,7 +513,7 @@ func (o *Orchestrator) Run() error {
 				Session:   o.cfg.SessionName,
 				Iteration: strconv.Itoa(currentIteration),
 			}
-			output, err := hooks.ExecuteAll(o.ctx, o.hooksConfig.Hooks.PreIteration, o.cfg.WorkDir, hookVars)
+			output, err := hooks.ExecuteAllPiped(o.ctx, o.hooksConfig.Hooks.PreIteration, o.cfg.WorkDir, hookVars)
 			if err != nil {
 				// Context cancelled - propagate
 				if o.ctx.Err() != nil {

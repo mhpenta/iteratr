@@ -58,7 +58,7 @@ func TestPreIterationWithPendingIntegration(t *testing.T) {
 		Session:   "test-session",
 		Iteration: "2",
 	}
-	preIterationOutput, err := hooks.ExecuteAll(ctx, hooksConfig.Hooks.PreIteration, tmpDir, hookVars)
+	preIterationOutput, err := hooks.ExecuteAllPiped(ctx, hooksConfig.Hooks.PreIteration, tmpDir, hookVars)
 	if err != nil {
 		t.Fatalf("Pre-iteration hook execution failed: %v", err)
 	}
