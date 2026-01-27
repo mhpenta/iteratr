@@ -11,8 +11,9 @@ import (
 // It reuses the existing ScrollList and MessageItem infrastructure from AgentOutput.
 type SubagentModal struct {
 	// Content display (reuses AgentOutput infrastructure)
-	messages  []MessageItem
-	toolIndex map[string]int // toolCallId → message index
+	scrollList *ScrollList    // For scrolling and rendering
+	messages   []MessageItem  // Message accumulation
+	toolIndex  map[string]int // toolCallId → message index
 
 	// Session metadata
 	sessionID    string
@@ -35,6 +36,7 @@ type SubagentModal struct {
 }
 
 // NewSubagentModal creates a new SubagentModal.
+// Initial dimensions are placeholder - will be updated on first Draw().
 func NewSubagentModal(sessionID, subagentType, workDir string) *SubagentModal {
 	ctx, cancel := context.WithCancel(context.Background())
 	spinner := NewDefaultGradientSpinner("Loading session...")
@@ -42,6 +44,7 @@ func NewSubagentModal(sessionID, subagentType, workDir string) *SubagentModal {
 		sessionID:    sessionID,
 		subagentType: subagentType,
 		workDir:      workDir,
+		scrollList:   NewScrollList(80, 20), // Placeholder dimensions
 		messages:     make([]MessageItem, 0),
 		toolIndex:    make(map[string]int),
 		loading:      true,
@@ -65,9 +68,18 @@ func (m *SubagentModal) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 }
 
 // Update handles keyboard input for scrolling.
+// Forwards scroll key events (up/down/pgup/pgdown/home/end) to the internal scrollList.
 func (m *SubagentModal) Update(msg tea.Msg) tea.Cmd {
-	// This will be implemented in task TAS-20
-	return nil
+	if m.scrollList == nil {
+		return nil
+	}
+
+	// Set scrollList as focused to enable keyboard handling
+	m.scrollList.SetFocused(true)
+	defer m.scrollList.SetFocused(false)
+
+	// Forward message to scrollList
+	return m.scrollList.Update(msg)
 }
 
 // HandleUpdate processes streaming messages from the subagent session.
