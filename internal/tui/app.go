@@ -127,6 +127,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case IterationStartMsg:
 		a.iteration = msg.Number // Track current iteration for note creation
 		a.modifiedFileCount = 0  // Reset modified file count for new iteration
+		a.status.SetModifiedFileCount(0)
 		busyCmd := a.dashboard.SetAgentBusy(true)
 		return a, tea.Batch(
 			a.dashboard.SetIteration(msg.Number),
@@ -267,6 +268,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Increment modified file count when a file is modified
 		a.modifiedFileCount++
 		// Update status bar to reflect new count
+		a.status.SetModifiedFileCount(a.modifiedFileCount)
 		return a, a.status.Tick()
 	}
 

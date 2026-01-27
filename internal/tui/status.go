@@ -17,18 +17,19 @@ type DurationTickMsg struct{}
 
 // StatusBar displays session info (left) and keybinding hints (right).
 type StatusBar struct {
-	width       int
-	height      int
-	sessionName string
-	startedAt   time.Time
-	stoppedAt   time.Time // When the duration timer was stopped (zero if running)
-	state       *session.State
-	connected   bool
-	working     bool
-	ticking     bool // Whether the spinner tick chain has been started
-	needsTick   bool // Whether a tick needs to be started on next Tick() call
-	layoutMode  LayoutMode
-	spinner     Spinner
+	width             int
+	height            int
+	sessionName       string
+	startedAt         time.Time
+	stoppedAt         time.Time // When the duration timer was stopped (zero if running)
+	state             *session.State
+	connected         bool
+	working           bool
+	ticking           bool // Whether the spinner tick chain has been started
+	needsTick         bool // Whether a tick needs to be started on next Tick() call
+	layoutMode        LayoutMode
+	spinner           Spinner
+	modifiedFileCount int // Number of files modified in current iteration
 }
 
 // NewStatusBar creates a new StatusBar component.
@@ -99,6 +100,16 @@ func (s *StatusBar) buildLeft() string {
 	// Add task stats if tasks exist
 	if stats := s.buildTaskStats(); stats != "" {
 		left += sep + stats
+	}
+
+	// Add modified file count if any files modified
+	if s.modifiedFileCount > 0 {
+		fileInfo := fmt.Sprintf("%d file", s.modifiedFileCount)
+		if s.modifiedFileCount > 1 {
+			fileInfo += "s"
+		}
+		fileInfo += " modified"
+		left += sep + theme.Current().S().HeaderInfo.Render(fileInfo)
 	}
 
 	// Add spinner when working
@@ -180,6 +191,11 @@ func (s *StatusBar) SetState(state *session.State) {
 	if !s.working {
 		s.ticking = false
 	}
+}
+
+// SetModifiedFileCount updates the count of files modified in the current iteration.
+func (s *StatusBar) SetModifiedFileCount(count int) {
+	s.modifiedFileCount = count
 }
 
 // Tick returns a command to start the spinner animation if needed.
