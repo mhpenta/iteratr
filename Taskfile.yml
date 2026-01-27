@@ -157,3 +157,15 @@ tasks:
     deps: [deps, check, build]
     cmds:
       - echo "CI pipeline complete"
+
+  npm-publish:
+    desc: Publish to npm using latest git tag version
+    dir: npm
+    cmds:
+      - git fetch --tags origin
+      - |
+        LATEST_TAG=$(git tag --sort=-v:refname | head -1)
+        VERSION=${LATEST_TAG#v}
+        echo "Publishing version $VERSION to npm..."
+        npm version $VERSION --no-git-tag-version
+        npm publish --access public
