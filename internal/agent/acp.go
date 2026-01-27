@@ -615,9 +615,16 @@ type toolCallUpdate struct {
 }
 
 // Nested content in completed tool_call_update
+// Handles polymorphic content blocks in tool_call_update
+// Can be either: {type:"content", content:{type:"text", text:"..."}}
+//
+//	or: {type:"diff", path:"...", oldText:"...", newText:"..."}
 type toolCallContent struct {
-	Type    string      `json:"type"`    // "content"
-	Content contentPart `json:"content"` // {type:"text", text:"output here"}
+	Type    string      `json:"type"`              // "content" or "diff"
+	Content contentPart `json:"content,omitempty"` // for type="content"
+	Path    string      `json:"path,omitempty"`    // for type="diff"
+	OldText string      `json:"oldText,omitempty"` // for type="diff"
+	NewText string      `json:"newText,omitempty"` // for type="diff"
 }
 
 // JSON-RPC response sent from client to server (for server-initiated requests)
