@@ -29,6 +29,7 @@ type App struct {
 	noteModal      *NoteModal
 	noteInputModal *NoteInputModal
 	taskInputModal *TaskInputModal
+	subagentModal  *SubagentModal
 
 	// Layout management
 	layout      Layout
