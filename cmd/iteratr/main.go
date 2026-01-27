@@ -16,12 +16,8 @@ const (
 	logoText2 = "█  █  ██▄ █▀▄ █▀█  █  █▀▄"
 )
 
-var (
-	// Version information (set via ldflags during build)
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
-)
+// Version set via ldflags during build
+var version = "dev"
 
 func main() {
 	// Ensure logger is closed on exit
