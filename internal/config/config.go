@@ -80,7 +80,7 @@ func Load() (*Config, error) {
 	// Load global config first (if exists)
 	globalPath := GlobalPath()
 	if fileExists(globalPath) {
-		v.AddConfigPath(filepath.Dir(globalPath))
+		v.SetConfigFile(globalPath)
 		if err := v.ReadInConfig(); err != nil {
 			return nil, fmt.Errorf("reading global config: %w", err)
 		}
@@ -89,7 +89,8 @@ func Load() (*Config, error) {
 	// Merge project config on top (if exists)
 	projectPath := ProjectPath()
 	if fileExists(projectPath) {
-		v.AddConfigPath(filepath.Dir(projectPath))
+		// Need to set config file explicitly for merge
+		v.SetConfigFile(projectPath)
 		if err := v.MergeInConfig(); err != nil {
 			return nil, fmt.Errorf("merging project config: %w", err)
 		}

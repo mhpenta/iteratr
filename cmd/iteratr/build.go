@@ -121,6 +121,33 @@ func setupWizardStore(dataDir string) (*session.Store, func(), error) {
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
+	// Load config via Viper
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Apply config defaults to buildFlags if CLI flags were not explicitly set
+	// This allows config to provide defaults, but CLI flags and wizard override them
+	if !cmd.Flags().Changed("model") {
+		buildFlags.model = cfg.Model
+	}
+	if !cmd.Flags().Changed("iterations") {
+		buildFlags.iterations = cfg.Iterations
+	}
+	if !cmd.Flags().Changed("headless") {
+		buildFlags.headless = cfg.Headless
+	}
+	if !cmd.Flags().Changed("auto-commit") {
+		buildFlags.autoCommit = cfg.AutoCommit
+	}
+	if !cmd.Flags().Changed("data-dir") {
+		buildFlags.dataDir = cfg.DataDir
+	}
+	if !cmd.Flags().Changed("template") {
+		buildFlags.template = cfg.Template
+	}
+
 	// Track temp template file for cleanup
 	var tempTemplatePath string
 	// Track if we're resuming an existing session (spec is optional in this case)
@@ -131,11 +158,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		logger.Info("No spec file provided, launching wizard...")
 
 		// Set up NATS for wizard session selector
-		dataDir := os.Getenv("ITERATR_DATA_DIR")
-		if dataDir == "" {
-			dataDir = buildFlags.dataDir
-		}
-		wizardStore, cleanup, err := setupWizardStore(dataDir)
+		wizardStore, cleanup, err := setupWizardStore(buildFlags.dataDir)
 		if err != nil {
 			return fmt.Errorf("failed to setup wizard store: %w", err)
 		}
@@ -243,16 +266,8 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("iterations must be >= 0 (0 means unlimited)")
 	}
 
-	// Get environment-based config
-	dataDir := os.Getenv("ITERATR_DATA_DIR")
-	if dataDir == "" {
-		dataDir = buildFlags.dataDir
-	}
-
-	// Determine template path with precedence:
-	// 1. Explicit --template flag
-	// 2. .iteratr.template in current directory (if exists)
-	// 3. Default embedded template (handled by template package)
+	// Determine template path with fallback to .iteratr.template if not set
+	// buildFlags.template is already initialized from config, CLI, or wizard
 	templatePath := buildFlags.template
 	if templatePath == "" {
 		if _, err := os.Stat(".iteratr.template"); err == nil {
@@ -267,7 +282,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		TemplatePath:      templatePath,
 		ExtraInstructions: buildFlags.extraInstructions,
 		Iterations:        buildFlags.iterations,
-		DataDir:           dataDir,
+		DataDir:           buildFlags.dataDir,
 		Headless:          buildFlags.headless,
 		Model:             buildFlags.model,
 		Reset:             buildFlags.reset,
