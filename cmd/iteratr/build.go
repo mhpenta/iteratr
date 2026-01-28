@@ -127,11 +127,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Check if config exists or if model is set via ENV var
+	// Check if config exists or if model is set via ENV var or CLI flag
 	// If neither exists, prompt user to run setup
 	if !config.Exists() && cfg.Model == "" && !cmd.Flags().Changed("model") {
 		return fmt.Errorf("no configuration found\n\nRun 'iteratr setup' to create a config file, or set ITERATR_MODEL environment variable")
 	}
+
+	// Validate config after merging with CLI flags (done below)
+	// Note: We defer validation until after CLI flag merging since flags can override config
 
 	// Apply config defaults to buildFlags if CLI flags were not explicitly set
 	// This allows config to provide defaults, but CLI flags and wizard override them
@@ -152,6 +155,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 	if !cmd.Flags().Changed("template") {
 		buildFlags.template = cfg.Template
+	}
+
+	// Validate that model is set after applying config and CLI flags
+	// Model can come from config file, ENV var (ITERATR_MODEL), or CLI flag
+	if buildFlags.model == "" {
+		return fmt.Errorf("model not configured\n\nSet model via:\n  - iteratr setup (creates config file)\n  - ITERATR_MODEL environment variable\n  - --model flag")
 	}
 
 	// Track temp template file for cleanup
