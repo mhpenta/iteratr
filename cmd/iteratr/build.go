@@ -291,6 +291,17 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	// If empty, orchestrator will use embedded default template
 	templatePath := buildFlags.template
 
+	// Warn if .iteratr.template exists but template config is not set
+	// (.iteratr.template auto-detection was deprecated - users should set template: .iteratr.template in config)
+	if templatePath == "" && cfg.Template == "" {
+		if _, err := os.Stat(".iteratr.template"); err == nil {
+			logger.Warn("Found .iteratr.template file but template is not configured.")
+			logger.Warn("Auto-detection of .iteratr.template was deprecated.")
+			logger.Warn("To use this template, add 'template: .iteratr.template' to your config file.")
+			logger.Warn("Run 'iteratr setup' or manually edit iteratr.yml")
+		}
+	}
+
 	// Create orchestrator
 	orch, err := orchestrator.New(orchestrator.Config{
 		SessionName:       sessionName,
