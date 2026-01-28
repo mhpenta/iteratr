@@ -57,11 +57,95 @@ Example:
 2. Save to `specs/<feature-name>.md`
 3. Update `specs/README.md` index table
 
+## Configuration
+
+Iteratr uses Viper for layered configuration management with files, environment variables, and CLI flags.
+
+### Config Locations
+
+- **Project config**: `./iteratr.yml` (project-specific settings)
+- **Global config**: `$XDG_CONFIG_HOME/iteratr/iteratr.yml` (user defaults, typically `~/.config/iteratr/iteratr.yml`)
+
+### Precedence
+
+CLI flags > ENV vars > project config > global config > defaults
+
+### Config Schema
+
+```yaml
+model: ""              # required (or ITERATR_MODEL env var)
+auto_commit: true      # auto-commit after iterations
+data_dir: .iteratr     # NATS/session storage
+log_level: info        # debug, info, warn, error
+log_file: ""           # empty = no file logging
+iterations: 0          # 0 = infinite
+headless: false        # run without TUI
+template: ""           # path to template file, empty = embedded default
+```
+
+### Environment Variables
+
+All config keys can be set via `ITERATR_*` env vars:
+
+| Config Key | ENV Var |
+|------------|---------|
+| `model` | `ITERATR_MODEL` |
+| `auto_commit` | `ITERATR_AUTO_COMMIT` |
+| `data_dir` | `ITERATR_DATA_DIR` |
+| `log_level` | `ITERATR_LOG_LEVEL` |
+| `log_file` | `ITERATR_LOG_FILE` |
+| `iterations` | `ITERATR_ITERATIONS` |
+| `headless` | `ITERATR_HEADLESS` |
+| `template` | `ITERATR_TEMPLATE` |
+
+### Commands
+
+**Setup wizard**: Create initial config interactively
+```bash
+iteratr setup           # Create global config at ~/.config/iteratr/iteratr.yml
+iteratr setup --project # Create project config at ./iteratr.yml
+iteratr setup --force   # Overwrite existing config
+```
+
+**View current config**: Display resolved configuration
+```bash
+iteratr config          # Shows merged config with precedence
+```
+
+### Usage in Code
+
+```go
+// Load config with full precedence (files + env vars + defaults)
+cfg, err := config.Load()
+if err != nil {
+    return fmt.Errorf("loading config: %w", err)
+}
+
+// Validate required fields
+if err := cfg.Validate(); err != nil {
+    return fmt.Errorf("invalid config: %w", err)
+}
+
+// CLI flags override config when explicitly set
+if cmd.Flags().Changed("model") {
+    cfg.Model = flagModel
+}
+```
+
+### Template Files
+
+`.iteratr.template` auto-detection was deprecated. To use a custom template:
+1. Set `template: path/to/template.md` in config, OR
+2. Use `--template` CLI flag, OR
+3. Set `ITERATR_TEMPLATE` env var
+
+The `iteratr gen-template` command still outputs to `.iteratr.template` by default for backwards compatibility.
+
 ## btca
 
 When you need up-to-date information about technologies used in this project, use btca to query source repositories directly.
 
-**Available resources**: opencode, bubbleteaV2, natsGo, acpGoSdk, bubbles, crush, ultraviolet, lipgloss, bubblezone, viper
+**Available resources**: Claude, bubbleteaV2, natsGo, acpGoSdk, bubbles, crush, ultraviolet, lipgloss, bubblezone, viper
 
 ### Usage
 
@@ -72,7 +156,7 @@ btca ask -r <resource> -q "<question>"
 Use multiple `-r` flags to query multiple resources at once:
 
 ```bash
-btca ask -r opencode -r bubbleteaV2 -q "How do I build a TUI with opencode?"
+btca ask -r Claude -r bubbleteaV2 -q "How do I build a TUI with Claude?"
 ```
 
 ### Using Bubbles Components
