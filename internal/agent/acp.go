@@ -604,6 +604,9 @@ func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, 
 		return "", fmt.Errorf("failed to send session/prompt request: %w", err)
 	}
 
+	// Track whether agent produced any output (to detect silent failures)
+	hadOutput := false
+
 	// Read messages in loop until response with matching request ID arrives
 	for {
 		select {
@@ -640,6 +643,7 @@ func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, 
 					logger.Warn("Failed to parse agent_message_chunk: %v", err)
 					continue
 				}
+				hadOutput = true // Agent produced text output
 				if onText != nil {
 					onText(chunk.Content.Text)
 				}
@@ -651,6 +655,7 @@ func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, 
 					logger.Warn("Failed to parse agent_thought_chunk: %v", err)
 					continue
 				}
+				hadOutput = true // Agent produced thinking output
 				if onThinking != nil {
 					onThinking(chunk.Content.Text)
 				}
@@ -662,6 +667,7 @@ func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, 
 					logger.Warn("Failed to parse tool_call: %v", err)
 					continue
 				}
+				hadOutput = true // Agent initiated a tool call
 				if onToolCall != nil {
 					onToolCall(ToolCallEvent{
 						ToolCallID: tc.ToolCallID,
@@ -787,6 +793,14 @@ func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, 
 		if stopReason == "" {
 			stopReason = "end_turn" // Default if not provided
 		}
+
+		// Detect silent failures: agent returned immediately without producing any output
+		// This typically indicates credential errors or other API failures that don't return proper JSON-RPC errors
+		if stopReason == "end_turn" && !hadOutput {
+			logger.Warn("Agent returned end_turn without producing any output - possible credential or API error")
+			return "", fmt.Errorf("agent returned no output - this may indicate a credential error (e.g., API key restricted to specific use cases) or model availability issue")
+		}
+
 		logger.Debug("ACP prompt completed with stop reason: %s", stopReason)
 		return stopReason, nil
 	}
