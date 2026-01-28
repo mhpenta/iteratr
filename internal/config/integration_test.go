@@ -10,42 +10,42 @@ func TestE2EConfigFlow(t *testing.T) {
 	// Save and restore original config
 	globalPath := GlobalPath()
 	projectPath := ProjectPath()
-	
+
 	// Backup existing configs
 	globalBackup := globalPath + ".test-backup"
 	projectBackup := projectPath + ".test-backup"
 	if _, err := os.Stat(globalPath); err == nil {
-		os.Rename(globalPath, globalBackup)
-		defer os.Rename(globalBackup, globalPath)
+		_ = os.Rename(globalPath, globalBackup)
+		defer func() { _ = os.Rename(globalBackup, globalPath) }()
 	} else {
-		defer os.Remove(globalPath)
+		defer func() { _ = os.Remove(globalPath) }()
 	}
 	if _, err := os.Stat(projectPath); err == nil {
-		os.Rename(projectPath, projectBackup)
-		defer os.Rename(projectBackup, projectPath)
+		_ = os.Rename(projectPath, projectBackup)
+		defer func() { _ = os.Rename(projectBackup, projectPath) }()
 	} else {
-		defer os.Remove(projectPath)
+		defer func() { _ = os.Remove(projectPath) }()
 	}
-	
+
 	// Clear env vars
 	origModel := os.Getenv("ITERATR_MODEL")
 	origAutoCommit := os.Getenv("ITERATR_AUTO_COMMIT")
 	origDataDir := os.Getenv("ITERATR_DATA_DIR")
-	os.Unsetenv("ITERATR_MODEL")
-	os.Unsetenv("ITERATR_AUTO_COMMIT")
-	os.Unsetenv("ITERATR_DATA_DIR")
+	_ = os.Unsetenv("ITERATR_MODEL")
+	_ = os.Unsetenv("ITERATR_AUTO_COMMIT")
+	_ = os.Unsetenv("ITERATR_DATA_DIR")
 	defer func() {
 		if origModel != "" {
-			os.Setenv("ITERATR_MODEL", origModel)
+			_ = os.Setenv("ITERATR_MODEL", origModel)
 		}
 		if origAutoCommit != "" {
-			os.Setenv("ITERATR_AUTO_COMMIT", origAutoCommit)
+			_ = os.Setenv("ITERATR_AUTO_COMMIT", origAutoCommit)
 		}
 		if origDataDir != "" {
-			os.Setenv("ITERATR_DATA_DIR", origDataDir)
+			_ = os.Setenv("ITERATR_DATA_DIR", origDataDir)
 		}
 	}()
-	
+
 	t.Run("SetupCreatesGlobalConfig", func(t *testing.T) {
 		// Simulate setup command creating config
 		cfg := &Config{
@@ -58,23 +58,23 @@ func TestE2EConfigFlow(t *testing.T) {
 			Headless:   false,
 			Template:   "",
 		}
-		
+
 		err := WriteGlobal(cfg)
 		if err != nil {
 			t.Fatalf("WriteGlobal failed: %v", err)
 		}
-		
+
 		// Verify file exists
 		if !Exists() {
 			t.Fatal("Config file should exist after WriteGlobal")
 		}
-		
+
 		// Load and verify
 		loaded, err := Load()
 		if err != nil {
 			t.Fatalf("Load failed: %v", err)
 		}
-		
+
 		if loaded.Model != cfg.Model {
 			t.Errorf("Expected model %s, got %s", cfg.Model, loaded.Model)
 		}
@@ -85,7 +85,7 @@ func TestE2EConfigFlow(t *testing.T) {
 			t.Errorf("Expected DataDir %s, got %s", cfg.DataDir, loaded.DataDir)
 		}
 	})
-	
+
 	t.Run("ProjectConfigOverridesGlobal", func(t *testing.T) {
 		// Create global config
 		globalCfg := &Config{
@@ -102,7 +102,7 @@ func TestE2EConfigFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("WriteGlobal failed: %v", err)
 		}
-		
+
 		// Create project config with different values
 		projectCfg := &Config{
 			Model:      "project/model",
@@ -118,14 +118,14 @@ func TestE2EConfigFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("WriteProject failed: %v", err)
 		}
-		defer os.Remove(projectPath)
-		
+		defer func() { _ = os.Remove(projectPath) }()
+
 		// Load - should get project values
 		loaded, err := Load()
 		if err != nil {
 			t.Fatalf("Load failed: %v", err)
 		}
-		
+
 		if loaded.Model != projectCfg.Model {
 			t.Errorf("Expected project model %s, got %s", projectCfg.Model, loaded.Model)
 		}
@@ -139,7 +139,7 @@ func TestE2EConfigFlow(t *testing.T) {
 			t.Errorf("Expected project LogLevel %s, got %s", projectCfg.LogLevel, loaded.LogLevel)
 		}
 	})
-	
+
 	t.Run("EnvVarOverridesConfig", func(t *testing.T) {
 		// Create config
 		cfg := &Config{
@@ -156,23 +156,23 @@ func TestE2EConfigFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("WriteGlobal failed: %v", err)
 		}
-		
+
 		// Set env vars
-		os.Setenv("ITERATR_MODEL", "env/model")
-		os.Setenv("ITERATR_AUTO_COMMIT", "false")
-		os.Setenv("ITERATR_DATA_DIR", ".env-data")
+		_ = os.Setenv("ITERATR_MODEL", "env/model")
+		_ = os.Setenv("ITERATR_AUTO_COMMIT", "false")
+		_ = os.Setenv("ITERATR_DATA_DIR", ".env-data")
 		defer func() {
-			os.Unsetenv("ITERATR_MODEL")
-			os.Unsetenv("ITERATR_AUTO_COMMIT")
-			os.Unsetenv("ITERATR_DATA_DIR")
+			_ = os.Unsetenv("ITERATR_MODEL")
+			_ = os.Unsetenv("ITERATR_AUTO_COMMIT")
+			_ = os.Unsetenv("ITERATR_DATA_DIR")
 		}()
-		
+
 		// Load - should get env values
 		loaded, err := Load()
 		if err != nil {
 			t.Fatalf("Load failed: %v", err)
 		}
-		
+
 		if loaded.Model != "env/model" {
 			t.Errorf("Expected env model, got %s", loaded.Model)
 		}
@@ -183,7 +183,7 @@ func TestE2EConfigFlow(t *testing.T) {
 			t.Errorf("Expected env DataDir, got %s", loaded.DataDir)
 		}
 	})
-	
+
 	t.Run("ValidateRejectsEmptyModel", func(t *testing.T) {
 		cfg := &Config{
 			Model:      "",
@@ -195,13 +195,13 @@ func TestE2EConfigFlow(t *testing.T) {
 			Headless:   false,
 			Template:   "",
 		}
-		
+
 		err := cfg.Validate()
 		if err == nil {
 			t.Error("Expected Validate to reject empty model")
 		}
 	})
-	
+
 	t.Run("ValidateAcceptsNonEmptyModel", func(t *testing.T) {
 		cfg := &Config{
 			Model:      "anthropic/claude-sonnet-4-5",
@@ -213,7 +213,7 @@ func TestE2EConfigFlow(t *testing.T) {
 			Headless:   false,
 			Template:   "",
 		}
-		
+
 		err := cfg.Validate()
 		if err != nil {
 			t.Errorf("Expected Validate to accept non-empty model, got: %v", err)
