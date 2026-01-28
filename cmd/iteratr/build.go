@@ -127,6 +127,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Check if config exists or if model is set via ENV var
+	// If neither exists, prompt user to run setup
+	if !config.Exists() && cfg.Model == "" && !cmd.Flags().Changed("model") {
+		return fmt.Errorf("no configuration found\n\nRun 'iteratr setup' to create a config file, or set ITERATR_MODEL environment variable")
+	}
+
 	// Apply config defaults to buildFlags if CLI flags were not explicitly set
 	// This allows config to provide defaults, but CLI flags and wizard override them
 	if !cmd.Flags().Changed("model") {
