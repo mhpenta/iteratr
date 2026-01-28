@@ -37,7 +37,13 @@ var buildCmd = &cobra.Command{
 
 The build command starts an iterative loop where an AI agent works on tasks
 defined in a spec file. It uses embedded NATS for persistence and presents
-a TUI (unless --headless) to monitor progress.`,
+a TUI (unless --headless) to monitor progress.
+
+Configuration is loaded from multiple sources with the following precedence:
+  CLI flags > Environment variables > Project config > Global config > Defaults
+
+Project config: ./iteratr.yml
+Global config: ~/.config/iteratr/iteratr.yml`,
 	RunE: runBuild,
 }
 
