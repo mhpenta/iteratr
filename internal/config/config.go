@@ -51,14 +51,31 @@ func Load() (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Explicit ENV bindings for better bool/int parsing
-	v.BindEnv("model", "ITERATR_MODEL")
-	v.BindEnv("auto_commit", "ITERATR_AUTO_COMMIT")
-	v.BindEnv("data_dir", "ITERATR_DATA_DIR")
-	v.BindEnv("log_level", "ITERATR_LOG_LEVEL")
-	v.BindEnv("log_file", "ITERATR_LOG_FILE")
-	v.BindEnv("iterations", "ITERATR_ITERATIONS")
-	v.BindEnv("headless", "ITERATR_HEADLESS")
-	v.BindEnv("template", "ITERATR_TEMPLATE")
+	// Note: BindEnv errors are very rare (only invalid key names), but we check them anyway
+	if err := v.BindEnv("model", "ITERATR_MODEL"); err != nil {
+		return nil, fmt.Errorf("binding model env: %w", err)
+	}
+	if err := v.BindEnv("auto_commit", "ITERATR_AUTO_COMMIT"); err != nil {
+		return nil, fmt.Errorf("binding auto_commit env: %w", err)
+	}
+	if err := v.BindEnv("data_dir", "ITERATR_DATA_DIR"); err != nil {
+		return nil, fmt.Errorf("binding data_dir env: %w", err)
+	}
+	if err := v.BindEnv("log_level", "ITERATR_LOG_LEVEL"); err != nil {
+		return nil, fmt.Errorf("binding log_level env: %w", err)
+	}
+	if err := v.BindEnv("log_file", "ITERATR_LOG_FILE"); err != nil {
+		return nil, fmt.Errorf("binding log_file env: %w", err)
+	}
+	if err := v.BindEnv("iterations", "ITERATR_ITERATIONS"); err != nil {
+		return nil, fmt.Errorf("binding iterations env: %w", err)
+	}
+	if err := v.BindEnv("headless", "ITERATR_HEADLESS"); err != nil {
+		return nil, fmt.Errorf("binding headless env: %w", err)
+	}
+	if err := v.BindEnv("template", "ITERATR_TEMPLATE"); err != nil {
+		return nil, fmt.Errorf("binding template env: %w", err)
+	}
 
 	// Load global config first (if exists)
 	globalPath := GlobalPath()
