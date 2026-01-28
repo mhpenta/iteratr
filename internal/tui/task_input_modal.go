@@ -54,8 +54,7 @@ func NewTaskInputModal() *TaskInputModal {
 
 	// Override textarea KeyMap to remove ctrl+t from LineNext
 	// By default, textarea binds ctrl+t to move cursor down (LineNext)
-	// We only want the down arrow key for this action, not ctrl+t
-	// This prevents confusion since ctrl+t opens the task modal globally
+	// We only want the down arrow key for this action
 	ta.KeyMap.LineNext = key.NewBinding(key.WithKeys("down"))
 
 	// Style textarea to match modal theme using default dark styles

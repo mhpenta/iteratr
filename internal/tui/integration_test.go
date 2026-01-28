@@ -15,17 +15,22 @@ func TestIntegration_KeyboardNavigation(t *testing.T) {
 	app.height = 40
 	app.layout = CalculateLayout(120, 40)
 
-	// ctrl+l toggles logs modal
-	msg := tea.KeyPressMsg{Text: "ctrl+l"}
+	// ctrl+x l toggles logs modal
+	msg := tea.KeyPressMsg{Text: "ctrl+x"}
+	_, _ = app.Update(msg)
+	msg = tea.KeyPressMsg{Text: "l"}
 	_, _ = app.Update(msg)
 	if !app.logsVisible {
-		t.Error("ctrl+l should toggle logs visible")
+		t.Error("ctrl+x l should toggle logs visible")
 	}
 
-	// ctrl+l again hides logs
+	// ctrl+x l again hides logs
+	msg = tea.KeyPressMsg{Text: "ctrl+x"}
+	_, _ = app.Update(msg)
+	msg = tea.KeyPressMsg{Text: "l"}
 	_, _ = app.Update(msg)
 	if app.logsVisible {
-		t.Error("ctrl+l again should hide logs")
+		t.Error("ctrl+x l again should hide logs")
 	}
 
 	// ctrl+c quits
@@ -260,8 +265,10 @@ func TestIntegration_CompactModeToggle(t *testing.T) {
 		t.Error("Sidebar should not be visible initially")
 	}
 
-	// Press ctrl+s to toggle sidebar
-	msg := tea.KeyPressMsg{Text: "ctrl+s"}
+	// Press ctrl+x s to toggle sidebar
+	msg := tea.KeyPressMsg{Text: "ctrl+x"}
+	_, _ = app.Update(msg)
+	msg = tea.KeyPressMsg{Text: "s"}
 	_, _ = app.Update(msg)
 
 	// Sidebar should now be visible
@@ -269,7 +276,10 @@ func TestIntegration_CompactModeToggle(t *testing.T) {
 		t.Error("Sidebar should be visible after toggle")
 	}
 
-	// Press ctrl+s again to hide
+	// Press ctrl+x s again to hide
+	msg = tea.KeyPressMsg{Text: "ctrl+x"}
+	_, _ = app.Update(msg)
+	msg = tea.KeyPressMsg{Text: "s"}
 	_, _ = app.Update(msg)
 
 	// Sidebar should be hidden

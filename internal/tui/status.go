@@ -29,7 +29,8 @@ type StatusBar struct {
 	needsTick         bool // Whether a tick needs to be started on next Tick() call
 	layoutMode        LayoutMode
 	spinner           Spinner
-	modifiedFileCount int // Number of files modified in current iteration
+	modifiedFileCount int  // Number of files modified in current iteration
+	prefixMode        bool // Whether waiting for second key after ctrl+x
 }
 
 // NewStatusBar creates a new StatusBar component.
@@ -169,6 +170,11 @@ func (s *StatusBar) buildTaskStats() string {
 
 // buildRight builds the right side with keybinding hints.
 func (s *StatusBar) buildRight() string {
+	// Show prefix mode indicator when waiting for second key
+	if s.prefixMode {
+		return theme.Current().S().HintKey.Render("ctrl+x") + " " +
+			theme.Current().S().HintDesc.Render("(awaiting key...)")
+	}
 	return HintStatus()
 }
 
@@ -196,6 +202,11 @@ func (s *StatusBar) SetState(state *session.State) {
 // SetModifiedFileCount updates the count of files modified in the current iteration.
 func (s *StatusBar) SetModifiedFileCount(count int) {
 	s.modifiedFileCount = count
+}
+
+// SetPrefixMode updates whether the app is waiting for a second key after ctrl+x.
+func (s *StatusBar) SetPrefixMode(prefixMode bool) {
+	s.prefixMode = prefixMode
 }
 
 // Tick returns a command to start the spinner animation if needed.

@@ -41,6 +41,7 @@ type App struct {
 	iteration         int  // Current iteration number (for note tagging)
 	queueDepth        int  // Number of messages waiting in orchestrator queue
 	modifiedFileCount int  // Number of files modified in current iteration
+	awaitingPrefixKey bool // True when waiting for second key after ctrl+x
 	store             *session.Store
 	sessionName       string
 	workDir           string // Working directory for agent (needed for subagent modal)
@@ -321,7 +322,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleKeyPress processes keyboard input using hierarchical priority routing.
-// Priority: Dialog → Modal → Global → View → Focus → Component
+// Priority: Dialog → Prefix Mode/Global → Modal → View → Focus → Component
 func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// 0. Dialog gets priority when visible
 	if a.dialog.IsVisible() {
@@ -331,7 +332,55 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, nil // Consume all keys when dialog is visible
 	}
 
-	// 1. Modal gets priority when visible
+	// 0.5. Global keys (ctrl+x, ctrl+c) - must come before modals to work everywhere
+	if cmd := a.handleGlobalKeys(msg); cmd != nil {
+		return a, cmd
+	}
+
+	// 1. Handle prefix key sequences (ctrl+x followed by another key)
+	if a.awaitingPrefixKey {
+		a.awaitingPrefixKey = false // Exit prefix mode after handling
+		a.status.SetPrefixMode(false)
+
+		switch msg.String() {
+		case "l":
+			// ctrl+x l -> toggle logs
+			a.logsVisible = !a.logsVisible
+			return a, nil
+		case "s":
+			// ctrl+x s -> toggle sidebar
+			a.sidebarVisible = !a.sidebarVisible
+			return a, nil
+		case "n":
+			// ctrl+x n -> create note
+			if a.dialog.IsVisible() || a.taskModal.IsVisible() || a.noteModal.IsVisible() ||
+				a.noteInputModal.IsVisible() || a.taskInputModal.IsVisible() || a.logsVisible {
+				return a, nil
+			}
+			if a.iteration == 0 {
+				return a, nil
+			}
+			return a, a.noteInputModal.Show()
+		case "t":
+			// ctrl+x t -> create task
+			if a.dialog.IsVisible() || a.taskModal.IsVisible() || a.noteModal.IsVisible() ||
+				a.noteInputModal.IsVisible() || a.taskInputModal.IsVisible() || a.logsVisible {
+				return a, nil
+			}
+			if a.iteration == 0 {
+				return a, nil
+			}
+			return a, a.taskInputModal.Show()
+		case "ctrl+c", "esc":
+			// Allow escape or ctrl+c to exit prefix mode
+			return a, nil
+		default:
+			// Any other key exits prefix mode without action
+			return a, nil
+		}
+	}
+
+	// 2. Modal gets priority when visible
 	if a.taskModal != nil && a.taskModal.IsVisible() {
 		// ESC key closes the modal
 		if msg.String() == "esc" {
@@ -378,10 +427,10 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, a.subagentModal.Update(msg)
 	}
 
-	// 2. Logs modal captures keys when visible
+	// 3. Logs modal captures remaining keys when visible
 	if a.logsVisible {
 		switch msg.String() {
-		case "esc", "ctrl+l":
+		case "esc":
 			a.logsVisible = false
 			return a, nil
 		default:
@@ -390,12 +439,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 3. Global keys (highest priority)
-	if cmd := a.handleGlobalKeys(msg); cmd != nil {
-		return a, cmd
-	}
-
-	// 4. Delegate to dashboard
+	// 4. Delegate to dashboard for focused component handling
 	return a, a.dashboard.Update(msg)
 }
 
@@ -573,43 +617,15 @@ func (a *App) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 // handleGlobalKeys processes global keyboard shortcuts (highest priority).
 func (a *App) handleGlobalKeys(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
+	case "ctrl+x":
+		// Enter prefix mode - wait for next key
+		a.awaitingPrefixKey = true
+		a.status.SetPrefixMode(true)
+		// Return a no-op command to signal we handled this key
+		return func() tea.Msg { return nil }
 	case "ctrl+c":
 		a.quitting = true
 		return tea.Quit
-	case "ctrl+l":
-		a.logsVisible = !a.logsVisible
-		return nil
-	case "ctrl+s":
-		a.sidebarVisible = !a.sidebarVisible
-		return nil
-	case "ctrl+n":
-		// Guard: don't open note input modal if another modal/dialog is visible
-		// This prevents modal stacking and ensures clean UI state
-		if a.dialog.IsVisible() || a.taskModal.IsVisible() || a.noteModal.IsVisible() ||
-			a.noteInputModal.IsVisible() || a.taskInputModal.IsVisible() || a.logsVisible {
-			return nil // No-op if any other modal/dialog is visible
-		}
-		// Guard: don't open note input modal if there's no active iteration
-		// Notes must be tagged to an iteration, so we need at least iteration 1
-		if a.iteration == 0 {
-			return nil // No-op if no iteration has started yet
-		}
-		// Open note input modal
-		return a.noteInputModal.Show()
-	case "ctrl+t":
-		// Guard: don't open task input modal if another modal/dialog is visible
-		// This prevents modal stacking and ensures clean UI state
-		if a.dialog.IsVisible() || a.taskModal.IsVisible() || a.noteModal.IsVisible() ||
-			a.noteInputModal.IsVisible() || a.taskInputModal.IsVisible() || a.logsVisible {
-			return nil // No-op if any other modal/dialog is visible
-		}
-		// Guard: don't open task input modal if there's no active iteration
-		// Tasks must be tagged to an iteration, so we need at least iteration 1
-		if a.iteration == 0 {
-			return nil // No-op if no iteration has started yet
-		}
-		// Open task input modal
-		return a.taskInputModal.Show()
 	}
 	return nil
 }

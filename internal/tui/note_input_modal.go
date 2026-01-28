@@ -48,8 +48,7 @@ func NewNoteInputModal() *NoteInputModal {
 
 	// Override textarea KeyMap to remove ctrl+n from LineNext
 	// By default, textarea binds ctrl+n to move cursor down (LineNext)
-	// We only want the down arrow key for this action, not ctrl+n
-	// This prevents confusion since ctrl+n opens the note modal globally
+	// We only want the down arrow key for this action
 	ta.KeyMap.LineNext = key.NewBinding(key.WithKeys("down"))
 
 	// Style textarea to match modal theme using default dark styles

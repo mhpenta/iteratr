@@ -39,17 +39,26 @@ func TestApp_HandleKeyPress_LogsToggle(t *testing.T) {
 		t.Error("logs should not be visible initially")
 	}
 
-	// ctrl+l toggles logs
-	msg := tea.KeyPressMsg{Text: "ctrl+l"}
-	app.handleKeyPress(msg)
+	// ctrl+x l toggles logs
+	msg := tea.KeyPressMsg{Text: "ctrl+x"}
+	updatedModel, _ := app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+	msg = tea.KeyPressMsg{Text: "l"}
+	updatedModel, _ = app.handleKeyPress(msg)
+	app = updatedModel.(*App)
 	if !app.logsVisible {
-		t.Error("logs should be visible after ctrl+l")
+		t.Error("logs should be visible after ctrl+x l")
 	}
 
-	// ctrl+l again hides
-	app.handleKeyPress(msg)
+	// ctrl+x l again hides
+	msg = tea.KeyPressMsg{Text: "ctrl+x"}
+	updatedModel, _ = app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+	msg = tea.KeyPressMsg{Text: "l"}
+	updatedModel, _ = app.handleKeyPress(msg)
+	app = updatedModel.(*App)
 	if app.logsVisible {
-		t.Error("logs should be hidden after second ctrl+l")
+		t.Error("logs should be hidden after second ctrl+x l")
 	}
 }
 
@@ -210,21 +219,111 @@ func TestApp_HandleKeyPress_SidebarToggle(t *testing.T) {
 		t.Error("expected sidebar to be hidden initially")
 	}
 
-	// Press ctrl+s to toggle sidebar visible
-	msg := tea.KeyPressMsg{Text: "ctrl+s"}
+	// Press ctrl+x s to toggle sidebar visible
+	msg := tea.KeyPressMsg{Text: "ctrl+x"}
 	updatedModel, _ := app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+	msg = tea.KeyPressMsg{Text: "s"}
+	updatedModel, _ = app.handleKeyPress(msg)
 	app = updatedModel.(*App)
 
 	if !app.sidebarVisible {
-		t.Error("expected sidebar to be visible after ctrl+s")
+		t.Error("expected sidebar to be visible after ctrl+x s")
 	}
 
-	// Press ctrl+s again to toggle sidebar hidden
-	msg = tea.KeyPressMsg{Text: "ctrl+s"}
+	// Press ctrl+x s again to toggle sidebar hidden
+	msg = tea.KeyPressMsg{Text: "ctrl+x"}
+	updatedModel, _ = app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+	msg = tea.KeyPressMsg{Text: "s"}
 	updatedModel, _ = app.handleKeyPress(msg)
 	app = updatedModel.(*App)
 
 	if app.sidebarVisible {
-		t.Error("expected sidebar to be hidden after second ctrl+s")
+		t.Error("expected sidebar to be hidden after second ctrl+x s")
+	}
+}
+
+func TestApp_HandleKeyPress_PrefixKeySequence(t *testing.T) {
+	ctx := context.Background()
+	app := NewApp(ctx, nil, "test-session", "/tmp", nil, nil)
+
+	// Initially not in prefix mode
+	if app.awaitingPrefixKey {
+		t.Error("expected awaitingPrefixKey to be false initially")
+	}
+
+	// Press ctrl+x to enter prefix mode
+	msg := tea.KeyPressMsg{Text: "ctrl+x"}
+	updatedModel, _ := app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+
+	if !app.awaitingPrefixKey {
+		t.Error("expected awaitingPrefixKey to be true after ctrl+x")
+	}
+	if !app.status.prefixMode {
+		t.Error("expected status bar prefixMode to be true after ctrl+x")
+	}
+
+	// Press 'l' to toggle logs (ctrl+x l)
+	msg = tea.KeyPressMsg{Text: "l"}
+	updatedModel, _ = app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+
+	if app.awaitingPrefixKey {
+		t.Error("expected awaitingPrefixKey to be false after completing sequence")
+	}
+	if app.status.prefixMode {
+		t.Error("expected status bar prefixMode to be false after completing sequence")
+	}
+	if !app.logsVisible {
+		t.Error("expected logs to be visible after ctrl+x l")
+	}
+}
+
+func TestApp_HandleKeyPress_PrefixKeySequence_Sidebar(t *testing.T) {
+	ctx := context.Background()
+	app := NewApp(ctx, nil, "test-session", "/tmp", nil, nil)
+
+	// Press ctrl+x then 's' to toggle sidebar
+	msg := tea.KeyPressMsg{Text: "ctrl+x"}
+	updatedModel, _ := app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+
+	msg = tea.KeyPressMsg{Text: "s"}
+	updatedModel, _ = app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+
+	if !app.sidebarVisible {
+		t.Error("expected sidebar to be visible after ctrl+x s")
+	}
+	if app.awaitingPrefixKey {
+		t.Error("expected awaitingPrefixKey to be false after completing sequence")
+	}
+}
+
+func TestApp_HandleKeyPress_PrefixKeySequence_Cancel(t *testing.T) {
+	ctx := context.Background()
+	app := NewApp(ctx, nil, "test-session", "/tmp", nil, nil)
+
+	// Press ctrl+x to enter prefix mode
+	msg := tea.KeyPressMsg{Text: "ctrl+x"}
+	updatedModel, _ := app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+
+	if !app.awaitingPrefixKey {
+		t.Error("expected awaitingPrefixKey to be true after ctrl+x")
+	}
+
+	// Press esc to cancel prefix mode
+	msg = tea.KeyPressMsg{Text: "esc"}
+	updatedModel, _ = app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+
+	if app.awaitingPrefixKey {
+		t.Error("expected awaitingPrefixKey to be false after esc")
+	}
+	if app.logsVisible {
+		t.Error("expected logs to remain hidden after canceling prefix mode")
 	}
 }

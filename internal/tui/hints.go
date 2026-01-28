@@ -15,11 +15,12 @@ const (
 	KeyEsc       = "esc"
 	KeyTab       = "tab"
 	KeyCtrlC     = "ctrl+c"
-	KeyCtrlL     = "ctrl+l"
+	KeyCtrlX     = "ctrl+x"   // Prefix modifier key
+	KeyCtrlXL    = "ctrl+x l" // Toggle logs
+	KeyCtrlXS    = "ctrl+x s" // Toggle sidebar
+	KeyCtrlXN    = "ctrl+x n" // Create note
+	KeyCtrlXT    = "ctrl+x t" // Create task
 	KeyCtrlEnter = "ctrl+enter"
-	KeyCtrlN     = "ctrl+n"
-	KeyCtrlT     = "ctrl+t"
-	KeyCtrlS     = "ctrl+s"
 	KeyPgUpDown  = "pgup/pgdn"
 	KeyHomeEnd   = "home/end"
 	KeyI         = "i"
@@ -103,9 +104,9 @@ func HintTaskNav() string {
 }
 
 // HintStatus returns hints for the status bar.
-// "ctrl+l logs . ctrl+c quit"
+// "ctrl+x l logs . ctrl+c quit"
 func HintStatus() string {
-	return RenderHintBar(KeyCtrlL, "logs", KeyCtrlC, "quit")
+	return RenderHintBar(KeyCtrlXL, "logs", KeyCtrlC, "quit")
 }
 
 // HintAgentViewport returns hints for the agent output viewport.
