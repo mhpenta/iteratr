@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 	"github.com/mark3labs/iteratr/internal/config"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 var configCmd = &cobra.Command{
@@ -30,27 +32,8 @@ func runConfig(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Display configuration
-	fmt.Println("Current Configuration:")
-	fmt.Println("=====================")
-	fmt.Println()
-
-	// Marshal to YAML for pretty printing
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to format config: %w", err)
-	}
-	fmt.Print(string(data))
-	fmt.Println()
-
-	// Show config file locations
-	fmt.Println("Config File Locations:")
-	fmt.Println("---------------------")
-
 	globalPath := config.GlobalPath()
 	projectPath := config.ProjectPath()
-
-	// Resolve project path to absolute for clearer display
 	absProjectPath, err := filepath.Abs(projectPath)
 	if err != nil {
 		absProjectPath = projectPath
@@ -59,21 +42,85 @@ func runConfig(cmd *cobra.Command, args []string) error {
 	globalExists := fileExists(globalPath)
 	projectExists := fileExists(projectPath)
 
-	if globalExists {
-		fmt.Printf("Global:  %s ✓\n", globalPath)
-	} else {
-		fmt.Printf("Global:  %s (not found)\n", globalPath)
+	// Build configuration values table
+	configRows := [][]string{
+		{"model", cfg.Model},
+		{"auto_commit", strconv.FormatBool(cfg.AutoCommit)},
+		{"data_dir", cfg.DataDir},
+		{"log_level", cfg.LogLevel},
+		{"log_file", cfg.LogFile},
+		{"iterations", strconv.Itoa(cfg.Iterations)},
+		{"headless", strconv.FormatBool(cfg.Headless)},
+		{"template", cfg.Template},
 	}
 
-	if projectExists {
-		fmt.Printf("Project: %s ✓\n", absProjectPath)
-	} else {
-		fmt.Printf("Project: %s (not found)\n", absProjectPath)
-	}
+	configTable := table.New().
+		Border(lipgloss.RoundedBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(colorBorder)).
+		Headers("Key", "Value").
+		Rows(configRows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return lipgloss.NewStyle().
+					Foreground(colorPrimary).
+					Bold(true).
+					Padding(0, 1)
+			}
+			style := lipgloss.NewStyle().Padding(0, 1)
+			if col == 0 {
+				return style.Foreground(colorBase)
+			}
+			return style.Foreground(colorMuted)
+		})
 
+	titleStyle := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
+	fmt.Println(titleStyle.Render("Configuration"))
+	fmt.Println(configTable)
 	fmt.Println()
 
-	// Show which environment variables are set
+	// Build config files table
+	fileRows := [][]string{}
+	if globalExists {
+		fileRows = append(fileRows, []string{"Global", globalPath, "✓"})
+	} else {
+		fileRows = append(fileRows, []string{"Global", globalPath, "not found"})
+	}
+	if projectExists {
+		fileRows = append(fileRows, []string{"Project", absProjectPath, "✓"})
+	} else {
+		fileRows = append(fileRows, []string{"Project", absProjectPath, "not found"})
+	}
+
+	filesTable := table.New().
+		Border(lipgloss.RoundedBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(colorBorder)).
+		Headers("Type", "Path", "Status").
+		Rows(fileRows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return lipgloss.NewStyle().
+					Foreground(colorPrimary).
+					Bold(true).
+					Padding(0, 1)
+			}
+			style := lipgloss.NewStyle().Padding(0, 1)
+			if col == 2 {
+				// Status column - color based on found/not found
+				if row < len(fileRows) && fileRows[row][2] == "✓" {
+					return style.Foreground(colorSuccess)
+				}
+				return style.Foreground(colorWarning)
+			}
+			if col == 0 {
+				return style.Foreground(colorBase)
+			}
+			return style.Foreground(colorMuted)
+		})
+
+	fmt.Println(titleStyle.Render("Config Files"))
+	fmt.Println(filesTable)
+
+	// Show environment overrides if any
 	envVars := []struct {
 		name string
 		key  string
@@ -88,28 +135,43 @@ func runConfig(cmd *cobra.Command, args []string) error {
 		{"ITERATR_TEMPLATE", "template"},
 	}
 
-	hasEnvOverrides := false
-	var setEnvVars []string
-
+	var envRows [][]string
 	for _, ev := range envVars {
 		if val := os.Getenv(ev.name); val != "" {
-			hasEnvOverrides = true
-			setEnvVars = append(setEnvVars, fmt.Sprintf("  %s=%s", ev.name, val))
+			envRows = append(envRows, []string{ev.name, val})
 		}
 	}
 
-	if hasEnvOverrides {
-		fmt.Println("Environment Overrides:")
-		fmt.Println("---------------------")
-		for _, line := range setEnvVars {
-			fmt.Println(line)
-		}
+	if len(envRows) > 0 {
 		fmt.Println()
+		envTable := table.New().
+			Border(lipgloss.RoundedBorder()).
+			BorderStyle(lipgloss.NewStyle().Foreground(colorBorder)).
+			Headers("Variable", "Value").
+			Rows(envRows...).
+			StyleFunc(func(row, col int) lipgloss.Style {
+				if row == table.HeaderRow {
+					return lipgloss.NewStyle().
+						Foreground(colorPrimary).
+						Bold(true).
+						Padding(0, 1)
+				}
+				style := lipgloss.NewStyle().Padding(0, 1)
+				if col == 0 {
+					return style.Foreground(colorBase)
+				}
+				return style.Foreground(colorMuted)
+			})
+
+		fmt.Println(titleStyle.Render("Environment Overrides"))
+		fmt.Println(envTable)
 	}
 
-	// Helpful note
+	// Helpful note if no config files exist
 	if !globalExists && !projectExists {
-		fmt.Println("Note: No config files found. Run 'iteratr setup' to create one.")
+		fmt.Println()
+		noteStyle := lipgloss.NewStyle().Foreground(colorWarning)
+		fmt.Println(noteStyle.Render("No config files found. Run 'iteratr setup' to create one."))
 	}
 
 	return nil
