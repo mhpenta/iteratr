@@ -53,8 +53,8 @@
       "type": "git",
       "name": "lipgloss",
       "url": "https://github.com/charmbracelet/lipgloss",
-      "branch": "master",
-      "specialNotes": "Style definitions for terminal UIs. Flexbox-like composition with JoinVertical/JoinHorizontal."
+      "branch": "v2.0.0-beta.3",
+      "specialNotes": "Lipgloss v2 style definitions for terminal UIs. Flexbox-like composition with JoinVertical/JoinHorizontal. Includes table and tree subpackages."
     },
     {
       "type": "git",
