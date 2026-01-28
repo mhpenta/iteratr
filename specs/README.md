@@ -24,3 +24,4 @@
 | [theme-system](./theme-system.md) | Draft | Centralized theme package for consistent colors/styles (crush pattern) |
 | [file-tracking](./file-tracking.md) | Draft | Track modified files during iteration for auto-commit |
 | [subagent-viewer](./subagent-viewer.md) | Draft | Display subagent calls as clickable messages with session viewer modal |
+| [config-management](./config-management.md) | Draft | Viper-based config with `iteratr setup` TUI command |

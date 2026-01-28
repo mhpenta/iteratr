@@ -62,6 +62,13 @@
       "url": "https://github.com/lrstanley/bubblezone",
       "branch": "v2-exp",
       "specialNotes": "Mouse zone management for Bubbletea v2. Enables clickable regions in TUIs."
+    },
+    {
+      "type": "git",
+      "name": "viper",
+      "url": "https://github.com/spf13/viper",
+      "branch": "master",
+      "specialNotes": "Configuration management. Supports YAML, env vars, CLI flags with layered precedence."
     }
   ],
   "model": "claude-haiku-4-5",
