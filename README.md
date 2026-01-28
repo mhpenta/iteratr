@@ -10,17 +10,11 @@
   <img src="iteratr.gif" alt="iteratr demo" />
 </p>
 
-AI coding agent orchestrator with embedded persistence and TUI.
+Orchestrates AI coding agents in an iterative loop.
 
 > **Warning:** This project is under active development. APIs, commands, and configuration formats may change without notice. Expect breaking changes between versions until a stable release is announced.
 >
 > **Warning:** iteratr runs opencode with auto-approve permissions enabled. The agent can execute commands, modify files, and make changes without manual confirmation. Use in trusted environments and review changes carefully.
-
-## Overview
-
-iteratr is a Go CLI tool that orchestrates AI coding agents in an iterative loop. It manages session state (tasks, notes, iterations) via embedded NATS JetStream, communicates with opencode via ACP (Agent Control Protocol) over stdio, and presents a full-screen TUI using Bubbletea v2.
-
-**Spiritual successor to ralph.nu** - same concepts, modern Go implementation.
 
 ## Features
 
@@ -859,6 +853,4 @@ MIT License - see LICENSE file for details
 - **Bubbletea**: https://github.com/charmbracelet/bubbletea
 - **NATS**: https://nats.io
 
-## Credits
 
-Inspired by ralph.nu - the original AI agent orchestrator in Nushell.
