@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/mark3labs/iteratr/internal/config"
+	"github.com/mark3labs/iteratr/internal/tui/setup"
 	"github.com/spf13/cobra"
 )
 
@@ -40,34 +41,19 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("config file already exists at %s\n\nUse --force to overwrite", targetPath)
 	}
 
-	// Create hardcoded config for tracer bullet phase
-	// TODO: Replace with TUI wizard in later tasks
-	cfg := &config.Config{
-		Model:      "anthropic/claude-sonnet-4-5", // Hardcoded for tracer bullet
-		AutoCommit: true,
-		DataDir:    ".iteratr",
-		LogLevel:   "info",
-		LogFile:    "",
-		Iterations: 0,
-		Headless:   false,
-		Template:   "",
-	}
-
-	// Write config to target location
-	var err error
-	if setupFlags.project {
-		err = config.WriteProject(cfg)
-	} else {
-		err = config.WriteGlobal(cfg)
-	}
-
+	// Run the TUI wizard to collect user preferences
+	result, err := setup.RunSetup(setupFlags.project)
 	if err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
+		return fmt.Errorf("setup wizard failed: %w", err)
 	}
 
-	// Print success message
-	fmt.Printf("Config written to: %s\n\n", targetPath)
+	// Config is written by the wizard itself during the flow
+	// Just print success message after wizard exits
+	fmt.Printf("\nConfig written to: %s\n\n", targetPath)
 	fmt.Println("Run 'iteratr build' to get started.")
+
+	// Suppress unused warning
+	_ = result
 
 	return nil
 }
