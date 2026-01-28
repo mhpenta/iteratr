@@ -46,9 +46,11 @@ type ModelStep struct {
 	scrollList     *tui.ScrollList // Lazy-rendering scroll list for filtered models
 	selectedIdx    int             // Index in filtered list
 	searchInput    textinput.Model // Fuzzy search input
+	customInput    textinput.Model // Custom model entry input
 	loading        bool            // Whether models are being fetched
 	error          string          // Error message if fetch failed
 	isNotInstalled bool            // True if opencode is not installed
+	isCustomMode   bool            // True when in custom model entry mode
 	spinner        spinner.Model   // Loading spinner
 	width          int             // Available width
 	height         int             // Available height
@@ -82,6 +84,13 @@ func NewModelStep() *ModelStep {
 	input.SetStyles(styles)
 	input.SetWidth(50)
 
+	// Initialize custom model input
+	customInput := textinput.New()
+	customInput.Placeholder = "e.g., anthropic/claude-opus-4"
+	customInput.Prompt = "Model ID: "
+	customInput.SetStyles(styles)
+	customInput.SetWidth(50)
+
 	// Initialize spinner
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -93,6 +102,7 @@ func NewModelStep() *ModelStep {
 
 	return &ModelStep{
 		searchInput: input,
+		customInput: customInput,
 		scrollList:  scrollList,
 		spinner:     s,
 		loading:     true,
@@ -249,7 +259,46 @@ func (m *ModelStep) Update(msg tea.Msg) tea.Cmd {
 
 	// Handle keyboard input
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		// In custom mode, handle differently
+		if m.isCustomMode {
+			switch keyMsg.String() {
+			case "enter":
+				// Submit custom model
+				customModel := strings.TrimSpace(m.customInput.Value())
+				if customModel != "" {
+					return func() tea.Msg {
+						return ModelSelectedMsg{ModelID: customModel}
+					}
+				}
+				return nil
+			case "esc":
+				// Exit custom mode
+				m.isCustomMode = false
+				m.customInput.SetValue("")
+				m.customInput.Blur()
+				m.searchInput.Focus()
+				// Notify wizard that content changed (for modal resizing)
+				return func() tea.Msg { return ContentChangedMsg{} }
+			}
+
+			// Update custom input (this will handle typing)
+			var cmd tea.Cmd
+			m.customInput, cmd = m.customInput.Update(msg)
+			cmds = append(cmds, cmd)
+			return tea.Batch(cmds...)
+		}
+
+		// Normal mode - handle model list navigation
 		switch keyMsg.String() {
+		case "c":
+			// Switch to custom model entry mode
+			m.isCustomMode = true
+			m.searchInput.Blur()
+			cmds = append(cmds, m.customInput.Focus())
+			// Notify wizard that content changed (for modal resizing)
+			cmds = append(cmds, func() tea.Msg { return ContentChangedMsg{} })
+			return tea.Batch(cmds...)
+
 		case "up", "k":
 			if m.selectedIdx > 0 {
 				m.selectedIdx--
@@ -313,13 +362,25 @@ func (m *ModelStep) View() string {
 			b.WriteString("\n")
 			b.WriteString(hintStyle.Render("Install it from: https://github.com/opencode-ai/opencode"))
 			b.WriteString("\n\n")
-			b.WriteString(hintStyle.Render("Press ESC to exit"))
+			b.WriteString(hintStyle.Render("Press 'c' for custom model or ESC to exit"))
 		} else {
 			// Generic error message
 			b.WriteString(errorStyle.Render("Error: " + m.error))
 			b.WriteString("\n\n")
-			b.WriteString(hintStyle.Render("Press 'r' to retry or ESC to exit"))
+			b.WriteString(hintStyle.Render("Press 'r' to retry, 'c' for custom model, or ESC to exit"))
 		}
+		return b.String()
+	}
+
+	// Show custom model entry mode
+	if m.isCustomMode {
+		titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#b4befe")).Bold(true)
+		b.WriteString(titleStyle.Render("Enter Custom Model"))
+		b.WriteString("\n\n")
+		b.WriteString(m.customInput.View())
+		b.WriteString("\n\n")
+		hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8"))
+		b.WriteString(hintStyle.Render("Enter confirm • ESC cancel"))
 		return b.String()
 	}
 
@@ -331,7 +392,7 @@ func (m *ModelStep) View() string {
 	if len(m.filtered) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8")).Render("No models match your search"))
 		b.WriteString("\n\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8")).Render("Type to filter • ESC to exit"))
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8")).Render("Type to filter • 'c' for custom • ESC to exit"))
 		return b.String()
 	}
 
@@ -343,7 +404,7 @@ func (m *ModelStep) View() string {
 
 	// Hint bar for normal state
 	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8"))
-	b.WriteString(hintStyle.Render("↑↓/j/k navigate • Enter select • ESC exit"))
+	b.WriteString(hintStyle.Render("↑↓/j/k navigate • Enter select • 'c' custom • ESC exit"))
 
 	return b.String()
 }
@@ -365,6 +426,17 @@ func (m *ModelStep) PreferredHeight() int {
 		}
 		// Error + blank + hint = 3 lines
 		return 3
+	}
+
+	// For custom mode:
+	// - Title: 1
+	// - Blank line: 1
+	// - Input: 1
+	// - Blank line: 1
+	// - Hint bar: 1
+	// Total: 5
+	if m.isCustomMode {
+		return 5
 	}
 
 	// For normal state:
