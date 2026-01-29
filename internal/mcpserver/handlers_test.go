@@ -1275,3 +1275,259 @@ func TestHandleSessionComplete_EmptySession(t *testing.T) {
 		t.Errorf("expected success for empty session, got: %s", text)
 	}
 }
+
+func TestHandleNoteAdd_Success(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Create request with notes array
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					map[string]any{
+						"content": "This is a learning note",
+						"type":    "learning",
+					},
+					map[string]any{
+						"content": "This is a stuck note",
+						"type":    "stuck",
+					},
+				},
+			},
+		},
+	}
+
+	// Call handler
+	result, err := srv.handleNoteAdd(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteAdd returned error: %v", err)
+	}
+
+	// Check result
+	text := extractText(result)
+	if !strings.Contains(text, "Added 2 note(s)") {
+		t.Errorf("expected success message with 2 notes, got: %s", text)
+	}
+	if !strings.Contains(text, "NOT-1") || !strings.Contains(text, "NOT-2") {
+		t.Errorf("expected note IDs in result, got: %s", text)
+	}
+	if !strings.Contains(text, "learning") || !strings.Contains(text, "stuck") {
+		t.Errorf("expected note types in result, got: %s", text)
+	}
+}
+
+func TestHandleNoteAdd_SingleNote(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Create request with single note
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					map[string]any{
+						"content": "Single tip note",
+						"type":    "tip",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := srv.handleNoteAdd(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteAdd returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "Added 1 note(s)") {
+		t.Errorf("expected success message with 1 note, got: %s", text)
+	}
+	if !strings.Contains(text, "NOT-1") {
+		t.Errorf("expected note ID in result, got: %s", text)
+	}
+}
+
+func TestHandleNoteAdd_MissingNotesParam(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "note-add",
+			Arguments: map[string]any{},
+		},
+	}
+
+	result, err := srv.handleNoteAdd(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteAdd returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "error:") || !strings.Contains(text, "notes") {
+		t.Errorf("expected missing notes error, got: %s", text)
+	}
+}
+
+func TestHandleNoteAdd_NotesNotArray(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": "not an array",
+			},
+		},
+	}
+
+	result, err := srv.handleNoteAdd(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteAdd returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "error:") || !strings.Contains(text, "not an array") {
+		t.Errorf("expected array type error, got: %s", text)
+	}
+}
+
+func TestHandleNoteAdd_EmptyArray(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{},
+			},
+		},
+	}
+
+	result, err := srv.handleNoteAdd(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteAdd returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "error:") || !strings.Contains(text, "at least one") {
+		t.Errorf("expected empty array error, got: %s", text)
+	}
+}
+
+func TestHandleNoteAdd_NoteNotObject(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					"not an object",
+				},
+			},
+		},
+	}
+
+	result, err := srv.handleNoteAdd(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteAdd returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "error:") || !strings.Contains(text, "not an object") {
+		t.Errorf("expected object type error, got: %s", text)
+	}
+}
+
+func TestHandleNoteAdd_MissingContent(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					map[string]any{
+						"type": "learning",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := srv.handleNoteAdd(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteAdd returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "error:") || !strings.Contains(text, "content") {
+		t.Errorf("expected missing content error, got: %s", text)
+	}
+}
+
+func TestHandleNoteAdd_MissingType(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					map[string]any{
+						"content": "Note without type",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := srv.handleNoteAdd(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteAdd returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "error:") || !strings.Contains(text, "type") {
+		t.Errorf("expected missing type error, got: %s", text)
+	}
+}
+
+func TestHandleNoteAdd_InvalidType(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					map[string]any{
+						"content": "Note with invalid type",
+						"type":    "invalid",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := srv.handleNoteAdd(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteAdd returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "error:") || !strings.Contains(text, "invalid type") {
+		t.Errorf("expected invalid type error, got: %s", text)
+	}
+}

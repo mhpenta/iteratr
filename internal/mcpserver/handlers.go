@@ -242,8 +242,81 @@ func (s *Server) handleTaskNext(ctx context.Context, request mcp.CallToolRequest
 
 // handleNoteAdd adds one or more notes to the session.
 func (s *Server) handleNoteAdd(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// TODO: implement
-	return mcp.NewToolResultText("not implemented"), nil
+	// Extract arguments
+	args := request.GetArguments()
+	if args == nil {
+		return mcp.NewToolResultText("error: no arguments provided"), nil
+	}
+
+	// Extract notes array
+	notesRaw, ok := args["notes"]
+	if !ok {
+		return mcp.NewToolResultText("error: missing 'notes' parameter"), nil
+	}
+
+	// Type assert to []any (mcp-go returns arrays as []any)
+	notesArray, ok := notesRaw.([]any)
+	if !ok {
+		return mcp.NewToolResultText("error: 'notes' is not an array"), nil
+	}
+
+	if len(notesArray) == 0 {
+		return mcp.NewToolResultText("error: at least one note is required"), nil
+	}
+
+	// Load state to get current iteration number
+	state, err := s.store.LoadState(ctx, s.sessName)
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("error: failed to load state: %v", err)), nil
+	}
+
+	// Get current iteration number (last iteration in slice)
+	currentIteration := 0
+	if len(state.Iterations) > 0 {
+		currentIteration = state.Iterations[len(state.Iterations)-1].Number
+	}
+
+	// Add each note
+	addedNotes := []string{}
+	for i, noteRaw := range notesArray {
+		// Convert to map[string]any
+		noteMap, ok := noteRaw.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultText(fmt.Sprintf("error: note %d is not an object", i)), nil
+		}
+
+		// Extract content (required)
+		content, ok := noteMap["content"].(string)
+		if !ok || content == "" {
+			return mcp.NewToolResultText(fmt.Sprintf("error: note %d missing or empty 'content' field", i)), nil
+		}
+
+		// Extract type (required)
+		noteType, ok := noteMap["type"].(string)
+		if !ok || noteType == "" {
+			return mcp.NewToolResultText(fmt.Sprintf("error: note %d missing or empty 'type' field", i)), nil
+		}
+
+		// Call NoteAdd
+		note, err := s.store.NoteAdd(ctx, s.sessName, session.NoteAddParams{
+			Content:   content,
+			Type:      noteType,
+			Iteration: currentIteration,
+		})
+		if err != nil {
+			return mcp.NewToolResultText(fmt.Sprintf("error: failed to add note %d: %v", i, err)), nil
+		}
+
+		addedNotes = append(addedNotes, fmt.Sprintf("%s (%s)", note.ID, note.Type))
+	}
+
+	// Return success message with note IDs
+	result := fmt.Sprintf("Added %d note(s): %s", len(addedNotes), addedNotes[0])
+	for i := 1; i < len(addedNotes); i++ {
+		result += fmt.Sprintf(", %s", addedNotes[i])
+	}
+
+	return mcp.NewToolResultText(result), nil
 }
 
 // handleNoteList returns all notes, optionally filtered by type.
