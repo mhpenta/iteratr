@@ -64,7 +64,9 @@ func (s *Server) Start(ctx context.Context) (int, error) {
 	// Get the port that was assigned
 	s.port = listener.Addr().(*net.TCPAddr).Port
 	// Close the listener - we just needed it to find a free port
-	listener.Close()
+	if err := listener.Close(); err != nil {
+		return 0, fmt.Errorf("failed to close listener: %w", err)
+	}
 
 	// Create HTTP server
 	s.httpServer = server.NewStreamableHTTPServer(s.mcpServer)
