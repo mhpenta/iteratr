@@ -17,6 +17,7 @@ import (
 	ierr "github.com/mark3labs/iteratr/internal/errors"
 	"github.com/mark3labs/iteratr/internal/hooks"
 	"github.com/mark3labs/iteratr/internal/logger"
+	"github.com/mark3labs/iteratr/internal/mcpserver"
 	"github.com/mark3labs/iteratr/internal/nats"
 	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/template"
@@ -48,6 +49,7 @@ type Orchestrator struct {
 	natsPort          int                // NATS server port
 	nc                *natsgo.Conn       // NATS connection
 	store             *session.Store     // Session store
+	mcpServer         *mcpserver.Server  // MCP tools server
 	runner            *agent.Runner      // Agent runner for opencode subprocess
 	tuiApp            *tui.App           // TUI application (nil if headless)
 	tuiProgram        *tea.Program       // Bubbletea program
@@ -116,7 +118,17 @@ func (o *Orchestrator) Start() error {
 	}
 	logger.Debug("JetStream setup complete")
 
-	// 3.5. Reset session data if requested
+	// 3.5. Start MCP tools server
+	logger.Debug("Starting MCP tools server")
+	o.mcpServer = mcpserver.New(o.store, o.cfg.SessionName)
+	port, err := o.mcpServer.Start(o.ctx)
+	if err != nil {
+		logger.Error("Failed to start MCP server: %v", err)
+		return fmt.Errorf("failed to start MCP server: %w", err)
+	}
+	logger.Info("MCP tools server started on port %d", port)
+
+	// 3.6. Reset session data if requested
 	if o.cfg.Reset {
 		logger.Info("Resetting session data for '%s'", o.cfg.SessionName)
 		if err := o.store.ResetSession(o.ctx, o.cfg.SessionName); err != nil {
