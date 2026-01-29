@@ -68,15 +68,19 @@ func (s *Server) Start(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("failed to close listener: %w", err)
 	}
 
-	// Create HTTP server
-	s.httpServer = server.NewStreamableHTTPServer(s.mcpServer)
+	// Create HTTP server with stateless mode (no session management needed)
+	s.httpServer = server.NewStreamableHTTPServer(
+		s.mcpServer,
+		server.WithStateLess(true),
+	)
 
 	logger.Debug("Starting MCP server on port %d", s.port)
 
-	// Start server in background
+	// Start server in background - capture httpServer reference for goroutine
 	addr := fmt.Sprintf("127.0.0.1:%d", s.port)
+	httpServer := s.httpServer
 	go func() {
-		if err := s.httpServer.Start(addr); err != nil {
+		if err := httpServer.Start(addr); err != nil {
 			logger.Error("MCP server error: %v", err)
 		}
 	}()
