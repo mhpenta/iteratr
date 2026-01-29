@@ -1531,3 +1531,325 @@ func TestHandleNoteAdd_InvalidType(t *testing.T) {
 		t.Errorf("expected invalid type error, got: %s", text)
 	}
 }
+
+func TestHandleNoteList_Empty(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-list",
+		},
+	}
+
+	result, err := srv.handleNoteList(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteList returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if text != "No notes" {
+		t.Errorf("expected 'No notes', got: %s", text)
+	}
+}
+
+func TestHandleNoteList_WithNotes(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add notes with different types
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					map[string]any{
+						"content": "Learning note content",
+						"type":    "learning",
+					},
+					map[string]any{
+						"content": "Stuck note content",
+						"type":    "stuck",
+					},
+					map[string]any{
+						"content": "Tip note content",
+						"type":    "tip",
+					},
+				},
+			},
+		},
+	}
+	_, err := srv.handleNoteAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add notes: %v", err)
+	}
+
+	// List all notes
+	listReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-list",
+		},
+	}
+
+	result, err := srv.handleNoteList(ctx, listReq)
+	if err != nil {
+		t.Fatalf("handleNoteList returned error: %v", err)
+	}
+
+	text := extractText(result)
+
+	// Check format: [type] (#iteration) content
+	if !strings.Contains(text, "[learning]") || !strings.Contains(text, "Learning note content") {
+		t.Errorf("expected learning note in format, got: %s", text)
+	}
+	if !strings.Contains(text, "[stuck]") || !strings.Contains(text, "Stuck note content") {
+		t.Errorf("expected stuck note in format, got: %s", text)
+	}
+	if !strings.Contains(text, "[tip]") || !strings.Contains(text, "Tip note content") {
+		t.Errorf("expected tip note in format, got: %s", text)
+	}
+}
+
+func TestHandleNoteList_FilterByType(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add notes with different types
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					map[string]any{
+						"content": "Learning note 1",
+						"type":    "learning",
+					},
+					map[string]any{
+						"content": "Stuck note 1",
+						"type":    "stuck",
+					},
+					map[string]any{
+						"content": "Learning note 2",
+						"type":    "learning",
+					},
+				},
+			},
+		},
+	}
+	_, err := srv.handleNoteAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add notes: %v", err)
+	}
+
+	// List only learning notes
+	listReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-list",
+			Arguments: map[string]any{
+				"type": "learning",
+			},
+		},
+	}
+
+	result, err := srv.handleNoteList(ctx, listReq)
+	if err != nil {
+		t.Fatalf("handleNoteList returned error: %v", err)
+	}
+
+	text := extractText(result)
+
+	// Should contain learning notes
+	if !strings.Contains(text, "Learning note 1") {
+		t.Errorf("expected learning note 1, got: %s", text)
+	}
+	if !strings.Contains(text, "Learning note 2") {
+		t.Errorf("expected learning note 2, got: %s", text)
+	}
+
+	// Should NOT contain stuck note
+	if strings.Contains(text, "Stuck note") {
+		t.Errorf("should not contain stuck note, got: %s", text)
+	}
+}
+
+func TestHandleNoteList_EmptyFilterResult(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add notes with only one type
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					map[string]any{
+						"content": "Learning note",
+						"type":    "learning",
+					},
+				},
+			},
+		},
+	}
+	_, err := srv.handleNoteAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add notes: %v", err)
+	}
+
+	// Filter by different type
+	listReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-list",
+			Arguments: map[string]any{
+				"type": "stuck",
+			},
+		},
+	}
+
+	result, err := srv.handleNoteList(ctx, listReq)
+	if err != nil {
+		t.Fatalf("handleNoteList returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if text != "No notes with type 'stuck'" {
+		t.Errorf("expected filter empty message, got: %s", text)
+	}
+}
+
+func TestHandleNoteList_InvalidTypeFilter(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-list",
+			Arguments: map[string]any{
+				"type": "invalid_type",
+			},
+		},
+	}
+
+	result, err := srv.handleNoteList(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleNoteList returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "error:") || !strings.Contains(text, "invalid type filter") {
+		t.Errorf("expected invalid type filter error, got: %s", text)
+	}
+}
+
+func TestHandleNoteList_AllValidTypes(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add notes with all valid types
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					map[string]any{
+						"content": "Learning content",
+						"type":    "learning",
+					},
+					map[string]any{
+						"content": "Stuck content",
+						"type":    "stuck",
+					},
+					map[string]any{
+						"content": "Tip content",
+						"type":    "tip",
+					},
+					map[string]any{
+						"content": "Decision content",
+						"type":    "decision",
+					},
+				},
+			},
+		},
+	}
+	_, err := srv.handleNoteAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add notes: %v", err)
+	}
+
+	// Test filtering by each type
+	types := []string{"learning", "stuck", "tip", "decision"}
+	for _, noteType := range types {
+		listReq := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name: "note-list",
+				Arguments: map[string]any{
+					"type": noteType,
+				},
+			},
+		}
+
+		result, err := srv.handleNoteList(ctx, listReq)
+		if err != nil {
+			t.Fatalf("handleNoteList returned error for type %s: %v", noteType, err)
+		}
+
+		text := extractText(result)
+		// Check that the note of this type is in the result
+		expectedType := "[" + noteType + "]"
+		expectedContent := string(noteType[0]-32) + noteType[1:] + " content"
+		if !strings.Contains(text, expectedType) || !strings.Contains(text, expectedContent) {
+			t.Errorf("expected note of type %s with content, got: %s", noteType, text)
+		}
+	}
+}
+
+func TestHandleNoteList_NoArguments(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add a note
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "note-add",
+			Arguments: map[string]any{
+				"notes": []any{
+					map[string]any{
+						"content": "Test note",
+						"type":    "learning",
+					},
+				},
+			},
+		},
+	}
+	_, err := srv.handleNoteAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add note: %v", err)
+	}
+
+	// List without any arguments (nil args)
+	listReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "note-list",
+			Arguments: nil,
+		},
+	}
+
+	result, err := srv.handleNoteList(ctx, listReq)
+	if err != nil {
+		t.Fatalf("handleNoteList returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "Test note") {
+		t.Errorf("expected note in result, got: %s", text)
+	}
+}

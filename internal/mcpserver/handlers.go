@@ -321,8 +321,40 @@ func (s *Server) handleNoteAdd(ctx context.Context, request mcp.CallToolRequest)
 
 // handleNoteList returns all notes, optionally filtered by type.
 func (s *Server) handleNoteList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// TODO: implement
-	return mcp.NewToolResultText("not implemented"), nil
+	// Extract arguments (optional for this handler)
+	args := request.GetArguments()
+
+	// Extract optional type filter
+	noteType := ""
+	if args != nil {
+		if t, ok := args["type"].(string); ok {
+			noteType = t
+		}
+	}
+
+	// Call NoteList with optional filter
+	notes, err := s.store.NoteList(ctx, s.sessName, session.NoteListParams{
+		Type: noteType,
+	})
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("error: %v", err)), nil
+	}
+
+	// Handle empty result
+	if len(notes) == 0 {
+		if noteType != "" {
+			return mcp.NewToolResultText(fmt.Sprintf("No notes with type '%s'", noteType)), nil
+		}
+		return mcp.NewToolResultText("No notes"), nil
+	}
+
+	// Format output matching CLI format: [type] (#iteration) content
+	var lines []string
+	for _, note := range notes {
+		lines = append(lines, fmt.Sprintf("[%s] (#%d) %s", note.Type, note.Iteration, note.Content))
+	}
+
+	return mcp.NewToolResultText(strings.Join(lines, "\n")), nil
 }
 
 // handleIterationSummary records a summary for the current iteration.
