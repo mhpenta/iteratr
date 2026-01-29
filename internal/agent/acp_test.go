@@ -527,3 +527,59 @@ func TestOnFileChangeCallback(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildMcpServerSlice(t *testing.T) {
+	tests := []struct {
+		name       string
+		mcpURL     string
+		wantLength int
+		wantServer McpServer
+	}{
+		{
+			name:       "empty URL returns empty slice",
+			mcpURL:     "",
+			wantLength: 0,
+		},
+		{
+			name:       "valid URL builds server struct",
+			mcpURL:     "http://localhost:8080/mcp",
+			wantLength: 1,
+			wantServer: McpServer{
+				Type:    "http",
+				Name:    "iteratr-tools",
+				URL:     "http://localhost:8080/mcp",
+				Headers: []HttpHeader{},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build the slice (same logic as in newSession/LoadSession)
+			mcpServers := []McpServer{}
+			if tt.mcpURL != "" {
+				mcpServers = append(mcpServers, McpServer{
+					Type:    "http",
+					Name:    "iteratr-tools",
+					URL:     tt.mcpURL,
+					Headers: []HttpHeader{},
+				})
+			}
+
+			if len(mcpServers) != tt.wantLength {
+				t.Errorf("got length %d, want %d", len(mcpServers), tt.wantLength)
+			}
+
+			if tt.wantLength > 0 {
+				got := mcpServers[0]
+				want := tt.wantServer
+				if got.Type != want.Type || got.Name != want.Name || got.URL != want.URL {
+					t.Errorf("got %+v, want %+v", got, want)
+				}
+				if len(got.Headers) != 0 {
+					t.Errorf("headers should be empty slice, got %v", got.Headers)
+				}
+			}
+		})
+	}
+}

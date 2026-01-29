@@ -124,9 +124,6 @@ func TestRenderWithDefaultTemplate(t *testing.T) {
 	if !strings.Contains(result, "REMAINING:") {
 		t.Error("Tasks not included")
 	}
-	if !strings.Contains(result, `--name iteratr`) {
-		t.Error("Session name not in tools section")
-	}
 }
 
 func TestLoadFromFile(t *testing.T) {

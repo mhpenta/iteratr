@@ -16,7 +16,6 @@ Session: {{session}} | Iteration: #{{iteration}}
 
 ## Rules
 - ONE task per iteration - complete fully, then STOP
-- Use MCP tools for ALL task management - never built-in todo tools
 - Test changes before marking complete
 - Write iteration-summary before stopping
 - Call session-complete only when ALL tasks done
