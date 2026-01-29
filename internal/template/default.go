@@ -16,7 +16,7 @@ Session: {{session}} | Iteration: #{{iteration}}
 
 ## Rules
 - ONE task per iteration - complete fully, then STOP
-- Use ` + "`" + `{{binary}} tool` + "`" + ` for ALL task management - never built-in todo tools
+- Use MCP tools for ALL task management - never built-in todo tools
 - Test changes before marking complete
 - Write iteration-summary before stopping
 - Call session-complete only when ALL tasks done
@@ -31,24 +31,10 @@ Session: {{session}} | Iteration: #{{iteration}}
 6. Write iteration-summary using iteration-summary tool
 7. STOP (do not pick another task)
 
-## Commands
-` + "`" + `{{binary}} tool COMMAND --data-dir .iteratr --name {{session}} [args]` + "`" + `
-
-| Command | Args | Notes |
-|---------|------|-------|
-| task-add | --content "..." | Add single task |
-| task-batch-add | --tasks '[{...}]' | Add multiple tasks |
-| task-status | --id X --status S | S: remaining, in_progress, completed, blocked |
-| task-priority | --id X --priority N | 0=critical, 1=high, 2=medium, 3=low, 4=backlog |
-| task-depends | --id X --depends-on Y | Set dependency |
-| note-add | --content "..." --type T | T: learning, stuck, tip, decision |
-| iteration-summary | --summary "..." | Record what you did |
-| session-complete | | Only when ALL tasks done |
-
 ## If Stuck
-- ` + "`" + `note-add --type stuck --content "describe issue"` + "`" + `
+- Add a note using note-add tool with type "stuck" describing the issue
 - Mark task blocked or fix before completing
-- If blocked by another task: ` + "`" + `task-depends --id X --depends-on Y` + "`" + `
+- If blocked by another task: use task-update tool to set depends_on
 
 ## Subagents
 Spin up subagents (via Task tool) to parallelize work. Each subagent has fresh context, so "one task per agent" is preserved.
