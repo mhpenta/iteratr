@@ -723,6 +723,13 @@ func (o *Orchestrator) Run() error {
 			return err
 		}
 
+		// Check if paused - block until resumed or context cancelled
+		if err := o.waitIfPaused(); err != nil {
+			// Context cancelled during pause
+			logger.Info("Context cancelled during pause, stopping iteration loop")
+			return nil
+		}
+
 		iterationCount++
 	}
 
@@ -1184,4 +1191,35 @@ func (o *Orchestrator) Resume() {
 // IsPaused returns the current pause state (for TUI display).
 func (o *Orchestrator) IsPaused() bool {
 	return o.paused.Load()
+}
+
+// waitIfPaused blocks if the orchestrator is paused, waiting for resume or context cancellation.
+// Called after each iteration completes and user messages are processed.
+// Returns nil on resume, or ctx.Err() if context is cancelled.
+func (o *Orchestrator) waitIfPaused() error {
+	// Fast path: if not paused, return immediately
+	if !o.paused.Load() {
+		return nil
+	}
+
+	// Paused flag is set - notify TUI that we're now blocking
+	logger.Info("Orchestrator paused, waiting for resume signal")
+	if o.tuiProgram != nil {
+		o.tuiProgram.Send(tui.PauseStateMsg{Paused: true})
+	}
+
+	// Block until resume signal or context cancellation
+	select {
+	case <-o.resumeChan:
+		// Drain channel in case of multiple signals (unlikely but safe)
+		select {
+		case <-o.resumeChan:
+		default:
+		}
+		logger.Info("Orchestrator resumed")
+		return nil
+	case <-o.ctx.Done():
+		logger.Info("Context cancelled during pause")
+		return o.ctx.Err()
+	}
 }
