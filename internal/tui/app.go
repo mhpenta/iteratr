@@ -138,17 +138,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AgentFinishMsg:
 		queueCmd := a.dashboard.SetAgentBusy(false)
-		return a, tea.Batch(a.agent.AppendFinish(msg), queueCmd)
+		// Also notify status bar that agent is no longer busy (for pause display)
+		statusCmd := func() tea.Msg { return AgentBusyMsg{Busy: false} }
+		return a, tea.Batch(a.agent.AppendFinish(msg), queueCmd, statusCmd)
 
 	case IterationStartMsg:
 		a.iteration = msg.Number // Track current iteration for note creation
 		a.modifiedFileCount = 0  // Reset modified file count for new iteration
 		a.status.SetModifiedFileCount(0)
 		busyCmd := a.dashboard.SetAgentBusy(true)
+		// Also notify status bar that agent is busy (for pause display)
+		statusCmd := func() tea.Msg { return AgentBusyMsg{Busy: true} }
 		return a, tea.Batch(
 			a.dashboard.SetIteration(msg.Number),
 			a.agent.AddIterationDivider(msg.Number),
 			busyCmd,
+			statusCmd,
 		)
 
 	case StateUpdateMsg:

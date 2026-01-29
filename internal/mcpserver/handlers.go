@@ -377,10 +377,17 @@ func (s *Server) handleIterationSummary(ctx context.Context, request mcp.CallToo
 		return mcp.NewToolResultText(fmt.Sprintf("error: failed to load state: %v", err)), nil
 	}
 
-	// Find the current (last) iteration number
+	// Find the current (last) iteration number and check for existing summary
 	iterNum := 1
+	var currentIter *session.Iteration
 	if len(state.Iterations) > 0 {
-		iterNum = state.Iterations[len(state.Iterations)-1].Number
+		currentIter = state.Iterations[len(state.Iterations)-1]
+		iterNum = currentIter.Number
+	}
+
+	// Guard: if this iteration already has a summary, don't record a duplicate
+	if currentIter != nil && currentIter.Summary != "" {
+		return mcp.NewToolResultText(fmt.Sprintf("Iteration #%d already has a summary recorded", iterNum)), nil
 	}
 
 	// Collect task IDs that are in_progress or were recently worked on

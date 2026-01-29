@@ -25,6 +25,7 @@ type StatusBar struct {
 	state             *session.State
 	connected         bool
 	working           bool
+	agentBusy         bool // Whether agent is processing (set via AgentBusyMsg, used for pause display)
 	paused            bool // Whether orchestrator is paused (set via PauseStateMsg)
 	ticking           bool // Whether the spinner tick chain has been started
 	needsTick         bool // Whether a tick needs to be started on next Tick() call
@@ -119,13 +120,13 @@ func (s *StatusBar) buildLeft() string {
 		left += " " + s.spinner.View()
 	}
 
-	// Add pause indicator
+	// Add pause indicator (uses agentBusy, not working, to determine PAUSING vs PAUSED)
 	if s.paused {
-		if s.working {
-			// Still working: show "PAUSING..." with spinner already visible
+		if s.agentBusy {
+			// Agent still processing: show "PAUSING..." with spinner already visible
 			left += " " + theme.Current().S().StatusPausing.Render("PAUSING...")
 		} else {
-			// Blocked: show static "⏸ PAUSED" icon
+			// Agent idle, orchestrator blocked: show static "⏸ PAUSED" icon
 			left += " " + theme.Current().S().StatusPaused.Render("⏸ PAUSED")
 		}
 	}
@@ -253,6 +254,9 @@ func (s *StatusBar) Update(msg tea.Msg) tea.Cmd {
 		return s.durationTick()
 	case PauseStateMsg:
 		s.paused = m.Paused
+		return nil
+	case AgentBusyMsg:
+		s.agentBusy = m.Busy
 		return nil
 	}
 
