@@ -762,3 +762,185 @@ func TestHandleTaskNext_SkipsBlocked(t *testing.T) {
 		t.Errorf("expected TAS-2 (only remaining task), got: %v", taskData["id"])
 	}
 }
+
+func TestHandleIterationSummary_Success(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add a task and mark it in_progress to simulate work
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-add",
+			Arguments: map[string]any{
+				"tasks": []any{
+					map[string]any{
+						"content": "Test task for summary",
+					},
+				},
+			},
+		},
+	}
+	_, err := srv.handleTaskAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add task: %v", err)
+	}
+
+	updateReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-update",
+			Arguments: map[string]any{
+				"id":     "TAS-1",
+				"status": "in_progress",
+			},
+		},
+	}
+	_, err = srv.handleTaskUpdate(ctx, updateReq)
+	if err != nil {
+		t.Fatalf("failed to update task: %v", err)
+	}
+
+	// Record iteration summary
+	summaryReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "iteration-summary",
+			Arguments: map[string]any{
+				"summary": "Implemented test task",
+			},
+		},
+	}
+
+	result, err := srv.handleIterationSummary(ctx, summaryReq)
+	if err != nil {
+		t.Fatalf("handleIterationSummary returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "Summary recorded for iteration #1") {
+		t.Errorf("expected success message with iteration number, got: %s", text)
+	}
+}
+
+func TestHandleIterationSummary_MissingSummary(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "iteration-summary",
+			Arguments: map[string]any{},
+		},
+	}
+
+	result, err := srv.handleIterationSummary(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleIterationSummary returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "error:") || !strings.Contains(text, "summary") {
+		t.Errorf("expected missing summary error, got: %s", text)
+	}
+}
+
+func TestHandleSessionComplete_Success(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add a task and complete it
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-add",
+			Arguments: map[string]any{
+				"tasks": []any{
+					map[string]any{
+						"content": "Test task to complete",
+					},
+				},
+			},
+		},
+	}
+	_, err := srv.handleTaskAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add task: %v", err)
+	}
+
+	updateReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-update",
+			Arguments: map[string]any{
+				"id":     "TAS-1",
+				"status": "completed",
+			},
+		},
+	}
+	_, err = srv.handleTaskUpdate(ctx, updateReq)
+	if err != nil {
+		t.Fatalf("failed to update task: %v", err)
+	}
+
+	// Mark session complete
+	completeReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "session-complete",
+		},
+	}
+
+	result, err := srv.handleSessionComplete(ctx, completeReq)
+	if err != nil {
+		t.Fatalf("handleSessionComplete returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if text != "Session marked complete" {
+		t.Errorf("expected success message, got: %s", text)
+	}
+}
+
+func TestHandleSessionComplete_IncompleteTasks(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add a task but leave it in remaining status
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-add",
+			Arguments: map[string]any{
+				"tasks": []any{
+					map[string]any{
+						"content": "Incomplete task",
+					},
+				},
+			},
+		},
+	}
+	_, err := srv.handleTaskAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add task: %v", err)
+	}
+
+	// Try to mark session complete with incomplete task
+	completeReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "session-complete",
+		},
+	}
+
+	result, err := srv.handleSessionComplete(ctx, completeReq)
+	if err != nil {
+		t.Fatalf("handleSessionComplete returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "error:") {
+		t.Errorf("expected error for incomplete tasks, got: %s", text)
+	}
+	if !strings.Contains(text, "not in terminal state") {
+		t.Errorf("expected 'not in terminal state' in error message, got: %s", text)
+	}
+}

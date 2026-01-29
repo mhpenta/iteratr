@@ -254,12 +254,54 @@ func (s *Server) handleNoteList(ctx context.Context, request mcp.CallToolRequest
 
 // handleIterationSummary records a summary for the current iteration.
 func (s *Server) handleIterationSummary(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// TODO: implement
-	return mcp.NewToolResultText("not implemented"), nil
+	// Extract arguments
+	args := request.GetArguments()
+	if args == nil {
+		return mcp.NewToolResultText("error: no arguments provided"), nil
+	}
+
+	// Extract required summary parameter
+	summary, ok := args["summary"].(string)
+	if !ok || summary == "" {
+		return mcp.NewToolResultText("error: missing or empty 'summary' parameter"), nil
+	}
+
+	// Load state to get current iteration number
+	state, err := s.store.LoadState(ctx, s.sessName)
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("error: failed to load state: %v", err)), nil
+	}
+
+	// Find the current (last) iteration number
+	iterNum := 1
+	if len(state.Iterations) > 0 {
+		iterNum = state.Iterations[len(state.Iterations)-1].Number
+	}
+
+	// Collect task IDs that are in_progress or were recently worked on
+	var tasksWorked []string
+	for id, task := range state.Tasks {
+		if task.Status == "in_progress" || task.Iteration == iterNum {
+			tasksWorked = append(tasksWorked, id)
+		}
+	}
+
+	// Call IterationSummary
+	err = s.store.IterationSummary(ctx, s.sessName, iterNum, summary, tasksWorked)
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("error: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Summary recorded for iteration #%d", iterNum)), nil
 }
 
 // handleSessionComplete marks the session as complete.
 func (s *Server) handleSessionComplete(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// TODO: implement
-	return mcp.NewToolResultText("not implemented"), nil
+	// Call SessionComplete (no parameters needed)
+	err := s.store.SessionComplete(ctx, s.sessName)
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("error: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText("Session marked complete"), nil
 }
