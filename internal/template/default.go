@@ -20,6 +20,8 @@ Session: {{session}} | Iteration: #{{iteration}}
 - Write iteration-summary before stopping
 - Call session-complete only when ALL tasks done
 - Respect user-added tasks even if not in spec
+- **THE SPEC IS THE SOURCE OF TRUTH** - task descriptions may be outdated; always validate against the current spec
+- **NO LOOPHOLES** - if the spec says "15 files must pass" but only 9 pass, work is NOT done, regardless of what any task description says
 
 ## Workflow
 1. **Sync tasks with spec** (EVERY iteration, BEFORE picking a task):
@@ -38,6 +40,13 @@ Session: {{session}} | Iteration: #{{iteration}}
 5. Mark task as completed using task-update tool
 6. Write iteration-summary using iteration-summary tool
 7. STOP (do not pick another task)
+
+## Before Calling session-complete
+You MUST verify:
+1. Re-read the spec and list ALL requirements
+2. Confirm EACH requirement is actually satisfied (not just that a task is marked complete)
+3. If ANY spec requirement is not met: DO NOT call session-complete - instead, add/update tasks and continue working
+4. Old task descriptions are NOT proof of completion - only the current spec matters
 
 ## If Stuck
 - Add a note using note-add tool with type "stuck" describing the issue
