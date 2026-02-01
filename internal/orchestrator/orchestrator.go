@@ -743,7 +743,11 @@ func (o *Orchestrator) Run() error {
 			}
 			// Only exit main loop if session is still complete
 			// If restarted, continue iterating
-			state, _ = o.store.LoadState(o.ctx, o.cfg.SessionName)
+			state, err = o.store.LoadState(o.ctx, o.cfg.SessionName)
+			if err != nil {
+				logger.Error("Failed to load session state after chat mode: %v", err)
+				break
+			}
 			if state.Complete {
 				break
 			}
