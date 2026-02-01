@@ -27,3 +27,4 @@
 | [config-management](./config-management.md) | Draft | Viper-based config with `iteratr setup` TUI command |
 | [mcp-tools-server](./mcp-tools-server.md) | Draft | Embedded MCP HTTP server replacing CLI tool injection |
 | [session-pause](./session-pause.md) | Draft | Pause/resume sessions via ctrl+x p, status bar indicator |
+| [git-status-bar](./git-status-bar.md) | Draft | Display git branch, hash, dirty state, ahead/behind in status bar |
