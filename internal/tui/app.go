@@ -104,6 +104,7 @@ func (a *App) Init() tea.Cmd {
 		a.agent.Init(),
 		a.checkConnectionHealth(), // Start periodic connection health checks
 		a.status.StartDurationTick(),
+		a.fetchGitInfo(), // Fetch git repository status on startup
 	)
 }
 
