@@ -698,7 +698,7 @@ func (o *Orchestrator) Run() error {
 		}
 
 		// Check if session_complete was signaled by checking session state
-		state, err := o.store.LoadState(o.ctx, o.cfg.SessionName)
+		state, err = o.store.LoadState(o.ctx, o.cfg.SessionName)
 		if err != nil {
 			logger.Error("Failed to load session state: %v", err)
 			return fmt.Errorf("failed to load session state: %w", err)
@@ -708,10 +708,39 @@ func (o *Orchestrator) Run() error {
 			// Send completion message to TUI to show dialog
 			if o.tuiProgram != nil {
 				o.tuiProgram.Send(tui.SessionCompleteMsg{})
-				// Wait for TUI to quit (user dismisses dialog)
-				<-o.tuiDone
 			}
-			break
+			// Enter chat mode: wait for TUI quit, but continue processing user messages
+			// This allows users to send follow-up messages after completion,
+			// and potentially restart the session to add new tasks
+		chatLoop:
+			for {
+				select {
+				case <-o.tuiDone:
+					break chatLoop
+				case <-o.ctx.Done():
+					return nil
+				case userMsg := <-o.sendChan:
+					logger.Info("Processing user message in chat mode")
+					if o.tuiProgram != nil {
+						o.tuiProgram.Send(tui.QueuedMessageProcessingMsg{Text: userMsg})
+					}
+					if err := o.runner.SendMessages(o.ctx, []string{userMsg}); err != nil {
+						logger.Error("Failed to send user message: %v", err)
+					}
+					// Check if session was restarted (user asked to add tasks and continue)
+					state, err = o.store.LoadState(o.ctx, o.cfg.SessionName)
+					if err == nil && !state.Complete {
+						logger.Info("Session restarted from chat mode, resuming iterations")
+						break chatLoop
+					}
+				}
+			}
+			// Only exit main loop if session is still complete
+			// If restarted, continue iterating
+			state, _ = o.store.LoadState(o.ctx, o.cfg.SessionName)
+			if state.Complete {
+				break
+			}
 		}
 
 		// After iteration completes, process ALL queued user messages
