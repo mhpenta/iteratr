@@ -22,7 +22,16 @@ Session: {{session}} | Iteration: #{{iteration}}
 - Respect user-added tasks even if not in spec
 
 ## Workflow
-1. If no tasks: sync from spec using task-add tool
+1. **Sync tasks with spec** (EVERY iteration, BEFORE picking a task):
+   a. List ALL requirements/items from the spec (e.g., files to fix, features to implement)
+   b. List ALL existing non-cancelled tasks
+   c. For EACH spec requirement: check if a matching task exists
+      - If NO matching task exists: use task-add to create it
+   d. For EACH existing task: check if it still matches the current spec
+      - If task references outdated info (e.g., "9 files" but spec now says "15 files"):
+        cancel the outdated task and add a new task with correct info
+      - If task has no corresponding spec requirement: cancel it (unless user-added)
+   e. Only proceed to step 2 after sync is complete
 2. Pick ONE ready task (highest priority, no blockers) using task-next tool
 3. Mark task as in_progress using task-update tool
 4. Implement + test
