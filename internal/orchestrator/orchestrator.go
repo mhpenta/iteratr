@@ -727,11 +727,17 @@ func (o *Orchestrator) Run() error {
 					if err := o.runner.SendMessages(o.ctx, []string{userMsg}); err != nil {
 						logger.Error("Failed to send user message: %v", err)
 					}
-					// Check if session was restarted (user asked to add tasks and continue)
+					// Reload state and refresh TUI (task list may have changed)
 					state, err = o.store.LoadState(o.ctx, o.cfg.SessionName)
-					if err == nil && !state.Complete {
-						logger.Info("Session restarted from chat mode, resuming iterations")
-						break chatLoop
+					if err == nil {
+						if o.tuiProgram != nil {
+							o.tuiProgram.Send(tui.StateUpdateMsg{State: state})
+						}
+						// Check if session was restarted (user asked to add tasks and continue)
+						if !state.Complete {
+							logger.Info("Session restarted from chat mode, resuming iterations")
+							break chatLoop
+						}
 					}
 				}
 			}
