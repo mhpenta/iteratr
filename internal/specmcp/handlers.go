@@ -3,6 +3,8 @@ package specmcp
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -65,15 +67,27 @@ func (s *Server) handleFinishSpec(ctx context.Context, request mcp.CallToolReque
 	}
 
 	// TODO (TAS-11): Implement slugify function with transliteration
+	slug := name // Use name directly for now, TAS-11 will implement proper slugify
+
 	// TODO (TAS-12): Validate spec content (check for Overview, Tasks sections)
-	// TODO (TAS-13): Check if file exists and return error if it does
-	// TODO (TAS-13): Save spec file to {spec_dir}/{slug}.md
+
+	// Build spec file path
+	specPath := filepath.Join(s.specDir, slug+".md")
+
+	// Check if file exists
+	if _, err := os.Stat(specPath); err == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("file already exists: %s. Please confirm overwrite or provide a different name.", specPath)), nil
+	}
+
+	// Save spec file
+	if err := saveSpecFile(specPath, content); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to save spec: %v", err)), nil
+	}
+
 	// TODO (TAS-14): Update README.md with marker detection/creation
 
-	// Stub response
-	_ = content
-	_ = name
-	return mcp.NewToolResultError("finish-spec not implemented"), nil
+	// Return success with file path
+	return mcp.NewToolResultText(fmt.Sprintf("Spec saved successfully to: %s", specPath)), nil
 }
 
 // Stub helper types and functions for future implementation in TAS-8
@@ -153,4 +167,21 @@ func parseQuestion(raw map[string]any) (*question, error) {
 		Options:  options,
 		Multiple: multiple,
 	}, nil
+}
+
+// saveSpecFile saves the spec content to the given file path.
+// Creates parent directory if it doesn't exist.
+func saveSpecFile(path string, content string) error {
+	// Create parent directory if it doesn't exist
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+
+	// Write file with 0644 permissions (rw-r--r--)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
 }
