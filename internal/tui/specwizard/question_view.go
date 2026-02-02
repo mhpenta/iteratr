@@ -16,6 +16,8 @@ type QuestionOption struct {
 	label       string // Display label (1-5 words)
 	description string // Longer description
 	isCustom    bool   // True if this is the "Type your own answer..." option
+	isSelected  bool   // True if this option is selected (for multi-select)
+	isMultiMode bool   // True if rendering in multi-select mode
 }
 
 // ID returns the unique identifier for this option.
@@ -24,12 +26,27 @@ func (o *QuestionOption) ID() string {
 }
 
 // Render returns the rendered string representation for this option.
-// Format:
+// Format (single-select):
 //
 //	label
 //	  description (indented, muted color)
+//
+// Format (multi-select):
+//
+//	[x] label  (or [ ] if not selected)
+//	    description (indented, muted color)
 func (o *QuestionOption) Render(width int) string {
 	var b strings.Builder
+
+	// For multi-select mode, show checkbox prefix
+	if o.isMultiMode {
+		checkboxStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#89b4fa"))
+		if o.isSelected {
+			b.WriteString(checkboxStyle.Render("[x] "))
+		} else {
+			b.WriteString(checkboxStyle.Render("[ ] "))
+		}
+	}
 
 	// Render label (main text)
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4"))
@@ -42,7 +59,12 @@ func (o *QuestionOption) Render(width int) string {
 	// Render description (if present and not custom option)
 	if o.description != "" && !o.isCustom {
 		b.WriteString("\n")
-		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086")).PaddingLeft(2)
+		// Add extra indent for multi-select to align with checkbox
+		indent := 2
+		if o.isMultiMode {
+			indent = 6 // Align with text after "[ ] "
+		}
+		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086")).PaddingLeft(indent)
 		b.WriteString(descStyle.Render(o.description))
 	}
 
@@ -60,14 +82,17 @@ func (o *QuestionOption) Height() int {
 
 // QuestionView manages the display of a single question with multiple choice options.
 // Supports scrollable list of options with up/down navigation and enter to select.
+// For multi-select questions, space toggles selection and enter submits all selected options.
 type QuestionView struct {
-	question    *specmcp.Question // The question being displayed
-	options     []*QuestionOption // All options (including auto-appended custom option)
-	scrollList  *tui.ScrollList   // Scrollable list for options
-	selectedIdx int               // Currently selected option index
-	width       int               // Available width
-	height      int               // Available height
-	focused     bool              // Whether this view has focus
+	question      *specmcp.Question // The question being displayed
+	options       []*QuestionOption // All options (including auto-appended custom option)
+	scrollList    *tui.ScrollList   // Scrollable list for options
+	selectedIdx   int               // Currently focused option index (cursor position)
+	selectedSet   map[int]bool      // Set of selected option indices (for multi-select)
+	width         int               // Available width
+	height        int               // Available height
+	focused       bool              // Whether this view has focus
+	isMultiSelect bool              // True if this is a multi-select question
 }
 
 // NewQuestionView creates a new question view for the given question.
@@ -98,22 +123,39 @@ func NewQuestionView(q *specmcp.Question) *QuestionView {
 	scrollList.SetFocused(true)
 	scrollList.SetSelected(0) // Default to first option
 
-	// Convert options to ScrollItem interface
-	scrollItems := make([]tui.ScrollItem, len(options))
-	for i, opt := range options {
+	view := &QuestionView{
+		question:      q,
+		options:       options,
+		scrollList:    scrollList,
+		selectedIdx:   0,
+		selectedSet:   make(map[int]bool),
+		width:         60,
+		height:        20,
+		focused:       true,
+		isMultiSelect: q.Multiple,
+	}
+
+	// Initialize scroll list items with correct multi-select mode
+	view.refreshScrollList()
+
+	return view
+}
+
+// refreshScrollList updates the scroll list items to reflect current selection state.
+// This is called after toggling selections in multi-select mode.
+func (q *QuestionView) refreshScrollList() {
+	// Update options with current selection state
+	for i, opt := range q.options {
+		opt.isSelected = q.selectedSet[i]
+		opt.isMultiMode = q.isMultiSelect
+	}
+
+	// Convert options to ScrollItem interface and update scroll list
+	scrollItems := make([]tui.ScrollItem, len(q.options))
+	for i, opt := range q.options {
 		scrollItems[i] = opt
 	}
-	scrollList.SetItems(scrollItems)
-
-	return &QuestionView{
-		question:    q,
-		options:     options,
-		scrollList:  scrollList,
-		selectedIdx: 0,
-		width:       60,
-		height:      20,
-		focused:     true,
-	}
+	q.scrollList.SetItems(scrollItems)
 }
 
 // SetSize updates the dimensions for the question view.
@@ -160,29 +202,88 @@ func (q *QuestionView) Update(msg tea.Msg) tea.Cmd {
 			}
 			return nil
 
-		case "enter", " ", "space":
-			// Option selected - check if custom answer
-			if q.selectedIdx >= 0 && q.selectedIdx < len(q.options) {
-				selectedOpt := q.options[q.selectedIdx]
-				if selectedOpt.isCustom {
-					// User wants to type custom answer - signal to parent
-					return func() tea.Msg {
-						return CustomAnswerRequestedMsg{}
+		case " ", "space":
+			// Space key behavior depends on multi-select mode
+			if q.isMultiSelect {
+				// Multi-select: toggle selection of current option
+				if q.selectedIdx >= 0 && q.selectedIdx < len(q.options) {
+					selectedOpt := q.options[q.selectedIdx]
+					// Don't allow toggling custom option in multi-select
+					if !selectedOpt.isCustom {
+						if q.selectedSet[q.selectedIdx] {
+							delete(q.selectedSet, q.selectedIdx)
+						} else {
+							q.selectedSet[q.selectedIdx] = true
+						}
+						// Update scroll list items to reflect new selection state
+						q.refreshScrollList()
 					}
 				}
-				// Pre-defined option selected - return answer
-				return func() tea.Msg {
-					return AnswerSelectedMsg{
-						Answer: selectedOpt.label,
-					}
-				}
+				return nil
+			} else {
+				// Single-select: same as enter - submit immediately
+				return q.handleSubmit()
 			}
-			return nil
+
+		case "enter":
+			// Enter key submits answer(s)
+			return q.handleSubmit()
 		}
 	}
 
 	// Forward to scroll list for scrolling support
 	return q.scrollList.Update(msg)
+}
+
+// handleSubmit handles the enter key press to submit answer(s).
+// For single-select: returns the currently focused option.
+// For multi-select: returns all selected options, or custom answer request if none selected.
+func (q *QuestionView) handleSubmit() tea.Cmd {
+	if q.isMultiSelect {
+		// Multi-select: gather all selected options
+		if len(q.selectedSet) == 0 {
+			// No selections - treat as custom answer request
+			return func() tea.Msg {
+				return CustomAnswerRequestedMsg{}
+			}
+		}
+
+		// Collect selected option labels
+		var answers []string
+		for idx := range q.selectedSet {
+			if idx >= 0 && idx < len(q.options) {
+				opt := q.options[idx]
+				if !opt.isCustom {
+					answers = append(answers, opt.label)
+				}
+			}
+		}
+
+		// Return multi-answer message
+		return func() tea.Msg {
+			return MultiAnswerSelectedMsg{
+				Answers: answers,
+			}
+		}
+	} else {
+		// Single-select: return currently focused option
+		if q.selectedIdx >= 0 && q.selectedIdx < len(q.options) {
+			selectedOpt := q.options[q.selectedIdx]
+			if selectedOpt.isCustom {
+				// User wants to type custom answer
+				return func() tea.Msg {
+					return CustomAnswerRequestedMsg{}
+				}
+			}
+			// Pre-defined option selected
+			return func() tea.Msg {
+				return AnswerSelectedMsg{
+					Answer: selectedOpt.label,
+				}
+			}
+		}
+		return nil
+	}
 }
 
 // View renders the question view.
@@ -258,7 +359,12 @@ func (q *QuestionView) PreferredHeight() int {
 // Parent should display text input to collect the custom response.
 type CustomAnswerRequestedMsg struct{}
 
-// AnswerSelectedMsg is sent when the user selects a pre-defined answer option.
+// AnswerSelectedMsg is sent when the user selects a pre-defined answer option (single-select).
 type AnswerSelectedMsg struct {
 	Answer string // The selected option label
+}
+
+// MultiAnswerSelectedMsg is sent when the user submits multiple selected options (multi-select).
+type MultiAnswerSelectedMsg struct {
+	Answers []string // All selected option labels
 }

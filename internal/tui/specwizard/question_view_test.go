@@ -561,3 +561,326 @@ func TestQuestionOption_ID(t *testing.T) {
 		t.Errorf("expected ID 'Test Option', got %q", id)
 	}
 }
+
+// Multi-select tests
+
+func TestQuestionView_MultiSelect_Initialization(t *testing.T) {
+	q := &specmcp.Question{
+		Question: "Select frameworks",
+		Header:   "Frameworks",
+		Options: []specmcp.QuestionOption{
+			{Label: "React", Description: "JavaScript library"},
+			{Label: "Vue", Description: "Progressive framework"},
+			{Label: "Angular", Description: "Full framework"},
+		},
+		Multiple: true,
+	}
+
+	view := NewQuestionView(q)
+
+	// Should be in multi-select mode
+	if !view.isMultiSelect {
+		t.Error("expected view to be in multi-select mode")
+	}
+
+	// Should have empty selection set initially
+	if len(view.selectedSet) != 0 {
+		t.Errorf("expected empty selection set, got %d selections", len(view.selectedSet))
+	}
+
+	// Options should have isMultiMode set
+	for i, opt := range view.options {
+		if !opt.isMultiMode && !opt.isCustom {
+			t.Errorf("option %d should have isMultiMode=true", i)
+		}
+	}
+}
+
+func TestQuestionView_MultiSelect_ToggleSelection(t *testing.T) {
+	q := &specmcp.Question{
+		Question: "Pick colors",
+		Header:   "Colors",
+		Options: []specmcp.QuestionOption{
+			{Label: "Red", Description: "Primary color"},
+			{Label: "Blue", Description: "Primary color"},
+			{Label: "Green", Description: "Primary color"},
+		},
+		Multiple: true,
+	}
+
+	view := NewQuestionView(q)
+
+	// Initially no selections
+	if len(view.selectedSet) != 0 {
+		t.Fatalf("expected no selections initially, got %d", len(view.selectedSet))
+	}
+
+	// Press space to select first option (Red)
+	view.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	if !view.selectedSet[0] {
+		t.Error("expected first option to be selected after space")
+	}
+	if len(view.selectedSet) != 1 {
+		t.Errorf("expected 1 selection, got %d", len(view.selectedSet))
+	}
+
+	// Press space again to deselect
+	view.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	if view.selectedSet[0] {
+		t.Error("expected first option to be deselected after second space")
+	}
+	if len(view.selectedSet) != 0 {
+		t.Errorf("expected 0 selections, got %d", len(view.selectedSet))
+	}
+
+	// Navigate down and select second option (Blue)
+	view.Update(tea.KeyPressMsg{Text: "down"})
+	view.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	if !view.selectedSet[1] {
+		t.Error("expected second option to be selected")
+	}
+
+	// Navigate down and select third option (Green) - both should be selected
+	view.Update(tea.KeyPressMsg{Text: "down"})
+	view.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	if !view.selectedSet[1] || !view.selectedSet[2] {
+		t.Error("expected both second and third options to be selected")
+	}
+	if len(view.selectedSet) != 2 {
+		t.Errorf("expected 2 selections, got %d", len(view.selectedSet))
+	}
+}
+
+func TestQuestionView_MultiSelect_SubmitMultiple(t *testing.T) {
+	q := &specmcp.Question{
+		Question: "Choose languages",
+		Header:   "Languages",
+		Options: []specmcp.QuestionOption{
+			{Label: "Go", Description: "Compiled language"},
+			{Label: "Python", Description: "Interpreted language"},
+			{Label: "Rust", Description: "Systems language"},
+		},
+		Multiple: true,
+	}
+
+	view := NewQuestionView(q)
+
+	// Select first and third options
+	view.Update(tea.KeyPressMsg{Code: ' ', Text: " "}) // Select Go
+	view.Update(tea.KeyPressMsg{Text: "down"})
+	view.Update(tea.KeyPressMsg{Text: "down"})
+	view.Update(tea.KeyPressMsg{Code: ' ', Text: " "}) // Select Rust
+
+	// Press enter to submit
+	cmd := view.Update(tea.KeyPressMsg{Text: "enter"})
+	if cmd == nil {
+		t.Fatal("expected command after enter, got nil")
+	}
+
+	// Execute command to get message
+	msg := cmd()
+	multiMsg, ok := msg.(MultiAnswerSelectedMsg)
+	if !ok {
+		t.Fatalf("expected MultiAnswerSelectedMsg, got %T", msg)
+	}
+
+	// Should have both selected answers
+	if len(multiMsg.Answers) != 2 {
+		t.Errorf("expected 2 answers, got %d", len(multiMsg.Answers))
+	}
+
+	// Check that answers contain selected options (order may vary)
+	hasGo := false
+	hasRust := false
+	for _, ans := range multiMsg.Answers {
+		if ans == "Go" {
+			hasGo = true
+		}
+		if ans == "Rust" {
+			hasRust = true
+		}
+	}
+
+	if !hasGo || !hasRust {
+		t.Errorf("expected answers to contain 'Go' and 'Rust', got %v", multiMsg.Answers)
+	}
+}
+
+func TestQuestionView_MultiSelect_SubmitEmpty(t *testing.T) {
+	q := &specmcp.Question{
+		Question: "Pick one or more",
+		Header:   "Options",
+		Options: []specmcp.QuestionOption{
+			{Label: "A", Description: "First"},
+			{Label: "B", Description: "Second"},
+		},
+		Multiple: true,
+	}
+
+	view := NewQuestionView(q)
+
+	// Don't select anything, just press enter
+	cmd := view.Update(tea.KeyPressMsg{Text: "enter"})
+	if cmd == nil {
+		t.Fatal("expected command after enter, got nil")
+	}
+
+	// Execute command to get message
+	msg := cmd()
+	_, ok := msg.(CustomAnswerRequestedMsg)
+	if !ok {
+		t.Fatalf("expected CustomAnswerRequestedMsg when no selections, got %T", msg)
+	}
+}
+
+func TestQuestionView_MultiSelect_CannotToggleCustomOption(t *testing.T) {
+	q := &specmcp.Question{
+		Question: "Select items",
+		Header:   "Items",
+		Options: []specmcp.QuestionOption{
+			{Label: "Item 1", Description: "First item"},
+			{Label: "Item 2", Description: "Second item"},
+		},
+		Multiple: true,
+	}
+
+	view := NewQuestionView(q)
+
+	// Navigate to custom option (last in list)
+	view.Update(tea.KeyPressMsg{Text: "down"})
+	view.Update(tea.KeyPressMsg{Text: "down"})
+	view.Update(tea.KeyPressMsg{Text: "down"})
+
+	// Should be at custom option
+	if !view.IsCustomSelected() {
+		t.Fatal("expected to be at custom option")
+	}
+
+	// Try to toggle with space - should do nothing
+	view.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+
+	// Custom option should not be in selected set
+	customIdx := len(view.options) - 1
+	if view.selectedSet[customIdx] {
+		t.Error("custom option should not be selectable in multi-select mode")
+	}
+}
+
+func TestQuestionView_MultiSelect_CheckboxRendering(t *testing.T) {
+	q := &specmcp.Question{
+		Question: "Test checkboxes",
+		Header:   "Test",
+		Options: []specmcp.QuestionOption{
+			{Label: "Option A", Description: "First"},
+			{Label: "Option B", Description: "Second"},
+		},
+		Multiple: true,
+	}
+
+	view := NewQuestionView(q)
+
+	// Select first option
+	view.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+
+	// Check that options have selection state
+	if !view.options[0].isSelected {
+		t.Error("first option should be marked as selected")
+	}
+	if view.options[1].isSelected {
+		t.Error("second option should not be marked as selected")
+	}
+
+	// Render first option - should show [x]
+	rendered := view.options[0].Render(80)
+	if !strings.Contains(rendered, "[x]") {
+		t.Error("selected option should render with [x] checkbox")
+	}
+
+	// Render second option - should show [ ]
+	rendered = view.options[1].Render(80)
+	if !strings.Contains(rendered, "[ ]") {
+		t.Error("unselected option should render with [ ] checkbox")
+	}
+}
+
+func TestQuestionView_SingleSelect_NoCheckbox(t *testing.T) {
+	q := &specmcp.Question{
+		Question: "Pick one",
+		Header:   "Single",
+		Options: []specmcp.QuestionOption{
+			{Label: "Option A", Description: "First"},
+		},
+		Multiple: false,
+	}
+
+	view := NewQuestionView(q)
+
+	// Check that view is not in multi-select mode
+	if view.isMultiSelect {
+		t.Error("view should not be in multi-select mode")
+	}
+
+	// Check that option does not have multi-mode set
+	if view.options[0].isMultiMode {
+		t.Error("option should not have isMultiMode=true")
+	}
+
+	// Render option - should NOT show checkbox
+	rendered := view.options[0].Render(80)
+	if strings.Contains(rendered, "[ ]") || strings.Contains(rendered, "[x]") {
+		t.Errorf("single-select option should not render with checkbox, got: %q", rendered)
+	}
+}
+
+func TestQuestionView_MultiSelect_SpaceDoesNotSubmit(t *testing.T) {
+	q := &specmcp.Question{
+		Question: "Multi choice",
+		Header:   "Test",
+		Options: []specmcp.QuestionOption{
+			{Label: "A", Description: "First"},
+		},
+		Multiple: true,
+	}
+
+	view := NewQuestionView(q)
+
+	// Press space - should toggle, not submit
+	cmd := view.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	if cmd != nil {
+		t.Error("space in multi-select should not return a command (submit)")
+	}
+
+	// Verify selection was toggled
+	if !view.selectedSet[0] {
+		t.Error("space should have toggled selection")
+	}
+}
+
+func TestQuestionView_SingleSelect_SpaceSubmits(t *testing.T) {
+	q := &specmcp.Question{
+		Question: "Single choice",
+		Header:   "Test",
+		Options: []specmcp.QuestionOption{
+			{Label: "A", Description: "First"},
+		},
+		Multiple: false,
+	}
+
+	view := NewQuestionView(q)
+
+	// Press space - should submit immediately (same as enter)
+	cmd := view.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	if cmd == nil {
+		t.Fatal("space in single-select should return submit command")
+	}
+
+	msg := cmd()
+	answerMsg, ok := msg.(AnswerSelectedMsg)
+	if !ok {
+		t.Fatalf("expected AnswerSelectedMsg, got %T", msg)
+	}
+
+	if answerMsg.Answer != "A" {
+		t.Errorf("expected answer 'A', got %q", answerMsg.Answer)
+	}
+}
