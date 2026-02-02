@@ -25,6 +25,290 @@ func TestWizardModel_Init(t *testing.T) {
 	}
 }
 
+// TestWizardModel_ModelSelectorStep_Initialization tests model selector initialization
+func TestWizardModel_ModelSelectorStep_Initialization(t *testing.T) {
+	m := &WizardModel{
+		step:    2, // Model selector step
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	if m.modelStep == nil {
+		t.Error("Expected modelStep to be initialized on step 2")
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_InitCalled tests that Init() is called when advancing to step 2
+func TestWizardModel_ModelSelectorStep_InitCalled(t *testing.T) {
+	m := &WizardModel{
+		step:    1, // Description step
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	// Advance to model selector step
+	_, cmd := m.goNext()
+
+	// Should initialize model step
+	if m.modelStep == nil {
+		t.Error("Expected modelStep to be initialized when advancing to step 2")
+	}
+
+	// Should return Init command
+	if cmd == nil {
+		t.Error("Expected Init command when advancing to model step")
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_View tests that model selector renders
+func TestWizardModel_ModelSelectorStep_View(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		width:   80,
+		height:  24,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	view := m.View()
+
+	// Should render without panic
+	if view.Content == nil {
+		t.Error("Expected view content to not be nil")
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_PreferredHeight tests preferred height delegation
+func TestWizardModel_ModelSelectorStep_PreferredHeight(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	height := m.getStepPreferredHeight()
+
+	// Should delegate to model step's preferred height
+	expectedHeight := m.modelStep.PreferredHeight()
+	if height != expectedHeight {
+		t.Errorf("Expected preferred height %d from model step, got %d", expectedHeight, height)
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_SetSize tests size propagation
+func TestWizardModel_ModelSelectorStep_SetSize(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		width:   100,
+		height:  30,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	// Update current step size
+	m.updateCurrentStepSize()
+
+	// Model step should be initialized and sized
+	if m.modelStep == nil {
+		t.Error("Expected modelStep to be initialized")
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_ModelSelected tests ModelSelectedMsg handling
+func TestWizardModel_ModelSelectorStep_ModelSelected(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	// Send ModelSelectedMsg
+	msg := wizard.ModelSelectedMsg{ModelID: "anthropic/claude-sonnet-4-5"}
+	model, _ := m.Update(msg)
+	wm := model.(*WizardModel)
+
+	// Should save model and advance to agent phase
+	if wm.result.Model != "anthropic/claude-sonnet-4-5" {
+		t.Errorf("Expected model 'anthropic/claude-sonnet-4-5', got '%s'", wm.result.Model)
+	}
+	if wm.step != 3 {
+		t.Errorf("Expected to advance to step 3 (agent phase), got step %d", wm.step)
+	}
+	if wm.buttonFocused {
+		t.Error("Expected button focus to be cleared when advancing to agent phase")
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_ValidationWithoutModel tests validation when no model selected
+func TestWizardModel_ModelSelectorStep_ValidationWithoutModel(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	// Model step with no model loaded should not be valid
+	// (This is a basic check - actual model loading requires opencode)
+	valid := m.isStepValid()
+	if valid {
+		t.Error("Expected model step to be invalid without model selected")
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_NavigateBack tests going back from model step
+func TestWizardModel_ModelSelectorStep_NavigateBack(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	// Go back from model step
+	_, _ = m.goBack()
+
+	if m.step != 1 {
+		t.Errorf("Expected to go back to step 1, got step %d", m.step)
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_EscapeKey tests ESC key on model step
+func TestWizardModel_ModelSelectorStep_EscapeKey(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	// Press ESC on model step
+	msg := tea.KeyPressMsg{Text: "esc"}
+	model, _ := m.Update(msg)
+	wm := model.(*WizardModel)
+
+	// Should go back to previous step
+	if wm.step != 1 {
+		t.Errorf("Expected to go back to step 1, got step %d", wm.step)
+	}
+	if wm.cancelled {
+		t.Error("Expected wizard not to be cancelled, just go back")
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_UpdateForwarding tests that Update is forwarded to model step
+func TestWizardModel_ModelSelectorStep_UpdateForwarding(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	// Send a key message that would be handled by model step
+	msg := tea.KeyPressMsg{Text: "down"}
+	_, _ = m.Update(msg)
+
+	// Should not panic (basic smoke test)
+	// Actual behavior depends on model step implementation
+}
+
+// TestWizardModel_ModelSelectorStep_ModalRendering tests that model step renders in modal
+func TestWizardModel_ModelSelectorStep_ModalRendering(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		width:   80,
+		height:  24,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	// Render modal
+	stepContent := "Mock model content"
+	modalContent := m.renderModal(stepContent)
+
+	// Should contain step indicator
+	if modalContent == "" {
+		t.Error("Expected modal content to not be empty")
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_ButtonBar tests button bar on model step
+func TestWizardModel_ModelSelectorStep_ButtonBar(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		width:   80,
+		height:  24,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	// Create button bar
+	buttonBar := m.createButtonBar(80, 10)
+
+	// Should have buttons (Back and Next)
+	if buttonBar == "" {
+		t.Error("Expected button bar to not be empty")
+	}
+
+	// Button bar should be created and assigned
+	if m.buttonBar == nil {
+		t.Error("Expected buttonBar to be assigned")
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_FullNavigation tests complete navigation through model step
+func TestWizardModel_ModelSelectorStep_FullNavigation(t *testing.T) {
+	m := &WizardModel{
+		step:    0,
+		specDir: "./specs",
+	}
+	m.Init()
+
+	// Step 0: Set valid name
+	m.nameStep.input.SetValue("test-spec")
+	_, _ = m.goNext()
+	if m.step != 1 {
+		t.Fatalf("Expected step 1, got %d", m.step)
+	}
+
+	// Step 1: Advance to model step
+	_, _ = m.goNext()
+	if m.step != 2 {
+		t.Fatalf("Expected step 2, got %d", m.step)
+	}
+	if m.modelStep == nil {
+		t.Fatal("Expected modelStep to be initialized")
+	}
+
+	// Send ModelSelectedMsg
+	msg := wizard.ModelSelectedMsg{ModelID: "test/model"}
+	model, _ := m.Update(msg)
+	wm := model.(*WizardModel)
+
+	// Should advance to agent phase
+	if wm.step != 3 {
+		t.Errorf("Expected step 3, got %d", wm.step)
+	}
+	if wm.result.Model != "test/model" {
+		t.Errorf("Expected model 'test/model', got '%s'", wm.result.Model)
+	}
+}
+
+// TestWizardModel_ModelSelectorStep_ContentChangedMsg tests ContentChangedMsg handling
+func TestWizardModel_ModelSelectorStep_ContentChangedMsg(t *testing.T) {
+	m := &WizardModel{
+		step:    2,
+		width:   80,
+		height:  24,
+		specDir: "./specs",
+	}
+	m.initCurrentStep()
+
+	// Send ContentChangedMsg (model step sends this when models load)
+	msg := ContentChangedMsg{}
+	_, _ = m.Update(msg)
+
+	// Should update step size (basic smoke test)
+	// No easy way to verify size was updated without access to internal state
+}
+
 func TestWizardModel_StepNavigation(t *testing.T) {
 	m := &WizardModel{
 		step:    0,
