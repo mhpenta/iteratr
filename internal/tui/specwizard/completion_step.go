@@ -185,44 +185,34 @@ func (m *CompletionStep) executeAction(action ButtonAction) tea.Cmd {
 }
 
 // openInEditor opens the spec file in $EDITOR.
-// If $EDITOR is not set, prints the file path instead.
+// If $EDITOR is not set, just exits (path is already shown in the UI).
 func (m *CompletionStep) openInEditor() tea.Cmd {
-	return func() tea.Msg {
-		editor := os.Getenv("EDITOR")
-		if editor == "" {
-			// No editor set - just print path and exit
-			fmt.Printf("Spec saved to: %s\n", m.specPath)
-			return tea.Quit()
-		}
-
-		// Open in editor
-		cmd := exec.Command(editor, m.specPath)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		// Run editor and wait for it to exit
-		if err := cmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error opening editor: %v\n", err)
-		}
-
-		return tea.Quit()
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		// No editor set - just exit (path is already shown in the UI)
+		return tea.Quit
 	}
+
+	// Create editor command
+	cmd := exec.Command(editor, m.specPath)
+
+	// Use tea.ExecProcess to properly suspend TUI, run editor, and restore terminal
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		// Editor finished - return to TUI briefly before quitting
+		// No need to handle error - user will see it in their editor
+		return tea.Quit()
+	})
 }
 
 // startBuild executes "iteratr build --spec <path>".
 func (m *CompletionStep) startBuild() tea.Cmd {
-	return func() tea.Msg {
-		cmd := exec.Command("iteratr", "build", "--spec", m.specPath)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+	// Create build command
+	cmd := exec.Command("iteratr", "build", "--spec", m.specPath)
 
-		// Run build and wait for it to exit
-		if err := cmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error starting build: %v\n", err)
-		}
-
+	// Use tea.ExecProcess to properly suspend TUI, run build, and restore terminal
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		// Build finished - return to TUI briefly before quitting
+		// No need to handle error - user will see it in the build output
 		return tea.Quit()
-	}
+	})
 }
