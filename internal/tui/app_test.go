@@ -332,3 +332,148 @@ func TestApp_HandleKeyPress_PrefixKeySequence_Cancel(t *testing.T) {
 		t.Error("expected logs to remain hidden after canceling prefix mode")
 	}
 }
+
+func TestApp_ResponsiveSidebarBehavior(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name                string
+		initialWidth        int
+		targetWidth         int
+		userHiddenBefore    bool
+		sidebarVisibleAfter bool
+		userHiddenAfter     bool
+	}{
+		{
+			name:                "narrowing below threshold auto-hides sidebar",
+			initialWidth:        120,
+			targetWidth:         80,
+			userHiddenBefore:    false,
+			sidebarVisibleAfter: false,
+			userHiddenAfter:     false, // Auto-hidden, not user-hidden
+		},
+		{
+			name:                "widening past threshold auto-restores sidebar",
+			initialWidth:        80,
+			targetWidth:         120,
+			userHiddenBefore:    false,
+			sidebarVisibleAfter: true,
+			userHiddenAfter:     false,
+		},
+		{
+			name:                "user-hidden sidebar stays hidden when narrowing",
+			initialWidth:        120,
+			targetWidth:         80,
+			userHiddenBefore:    true,
+			sidebarVisibleAfter: false,
+			userHiddenAfter:     true, // Remains user-hidden
+		},
+		{
+			name:                "user-hidden sidebar stays hidden when widening",
+			initialWidth:        80,
+			targetWidth:         120,
+			userHiddenBefore:    true,
+			sidebarVisibleAfter: false,
+			userHiddenAfter:     true, // Remains user-hidden
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := NewApp(ctx, nil, "test-session", "/tmp", tmpDir, nil, nil, nil)
+
+			// Set initial width
+			msg := tea.WindowSizeMsg{Width: tt.initialWidth, Height: 30}
+			updatedModel, _ := app.Update(msg)
+			app = updatedModel.(*App)
+
+			// Set user-hidden state if needed
+			if tt.userHiddenBefore {
+				app.sidebarVisible = false
+				app.sidebarUserHidden = true
+			} else {
+				app.sidebarVisible = true
+				app.sidebarUserHidden = false
+			}
+
+			// Resize to target width
+			msg = tea.WindowSizeMsg{Width: tt.targetWidth, Height: 30}
+			updatedModel, _ = app.Update(msg)
+			app = updatedModel.(*App)
+
+			// Check results
+			if app.sidebarVisible != tt.sidebarVisibleAfter {
+				t.Errorf("sidebarVisible: got %v, want %v", app.sidebarVisible, tt.sidebarVisibleAfter)
+			}
+			if app.sidebarUserHidden != tt.userHiddenAfter {
+				t.Errorf("sidebarUserHidden: got %v, want %v", app.sidebarUserHidden, tt.userHiddenAfter)
+			}
+		})
+	}
+}
+
+func TestApp_ManualTogglePreservedAcrossResizes(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+	app := NewApp(ctx, nil, "test-session", "/tmp", tmpDir, nil, nil, nil)
+
+	// Start with wide terminal
+	msg := tea.WindowSizeMsg{Width: 120, Height: 30}
+	updatedModel, _ := app.Update(msg)
+	app = updatedModel.(*App)
+
+	// User manually hides sidebar
+	keyMsg := tea.KeyPressMsg{Text: "ctrl+x"}
+	updatedModel, _ = app.handleKeyPress(keyMsg)
+	app = updatedModel.(*App)
+	keyMsg = tea.KeyPressMsg{Text: "b"}
+	updatedModel, _ = app.handleKeyPress(keyMsg)
+	app = updatedModel.(*App)
+
+	if app.sidebarVisible {
+		t.Error("sidebar should be hidden after manual toggle")
+	}
+	if !app.sidebarUserHidden {
+		t.Error("sidebarUserHidden should be true after manual hide")
+	}
+
+	// Narrow terminal (should stay hidden)
+	msg = tea.WindowSizeMsg{Width: 80, Height: 30}
+	updatedModel, _ = app.Update(msg)
+	app = updatedModel.(*App)
+
+	if app.sidebarVisible {
+		t.Error("sidebar should remain hidden when narrowing")
+	}
+	if !app.sidebarUserHidden {
+		t.Error("sidebarUserHidden should remain true")
+	}
+
+	// Widen terminal again (should still stay hidden)
+	msg = tea.WindowSizeMsg{Width: 120, Height: 30}
+	updatedModel, _ = app.Update(msg)
+	app = updatedModel.(*App)
+
+	if app.sidebarVisible {
+		t.Error("sidebar should remain hidden when widening (user preference)")
+	}
+	if !app.sidebarUserHidden {
+		t.Error("sidebarUserHidden should remain true")
+	}
+
+	// User manually shows sidebar
+	keyMsg = tea.KeyPressMsg{Text: "ctrl+x"}
+	updatedModel, _ = app.handleKeyPress(keyMsg)
+	app = updatedModel.(*App)
+	keyMsg = tea.KeyPressMsg{Text: "b"}
+	updatedModel, _ = app.handleKeyPress(keyMsg)
+	app = updatedModel.(*App)
+
+	if !app.sidebarVisible {
+		t.Error("sidebar should be visible after manual toggle")
+	}
+	if app.sidebarUserHidden {
+		t.Error("sidebarUserHidden should be false after manual show")
+	}
+}

@@ -136,9 +136,30 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.handleMouseWheel(msg)
 
 	case tea.WindowSizeMsg:
+		oldWidth := a.width
 		a.width = msg.Width
 		a.height = msg.Height
 		a.layoutDirty = true
+
+		// Handle responsive sidebar visibility based on width changes
+		wasWide := oldWidth >= CompactWidthBreakpoint
+		isWide := a.width >= CompactWidthBreakpoint
+
+		if wasWide && !isWide {
+			// Narrowing below threshold: auto-hide if not already user-hidden
+			if !a.sidebarUserHidden && a.sidebarVisible {
+				a.sidebarVisible = false
+				// Don't set sidebarUserHidden - this is auto-hide
+				a.saveUIState()
+			}
+		} else if !wasWide && isWide {
+			// Widening past threshold: auto-restore only if not user-hidden
+			if !a.sidebarUserHidden && !a.sidebarVisible {
+				a.sidebarVisible = true
+				a.saveUIState()
+			}
+		}
+
 		// Recalculate layout and propagate sizes
 		a.layout = CalculateLayout(a.width, a.height)
 		a.propagateSizes()
@@ -164,6 +185,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.iteration = msg.Number // Track current iteration for note creation
 		a.modifiedFileCount = 0  // Reset modified file count for new iteration
 		a.status.SetModifiedFileCount(0)
+		a.lastGitCheck = time.Now() // Update throttle timestamp
 		busyCmd := a.dashboard.SetAgentBusy(true)
 		// Also notify status bar that agent is busy (for pause display)
 		statusCmd := func() tea.Msg { return AgentBusyMsg{Busy: true} }
@@ -172,6 +194,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.agent.AddIterationDivider(msg.Number),
 			busyCmd,
 			statusCmd,
+			a.fetchGitInfo(), // Refresh git status at iteration start
 		)
 
 	case StateUpdateMsg:
