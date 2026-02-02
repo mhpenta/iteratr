@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/mark3labs/iteratr/internal/logger"
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -114,14 +113,4 @@ func (s *Server) URL() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return fmt.Sprintf("http://localhost:%d/mcp", s.port)
-}
-
-// Stub handlers - full implementation in TAS-7 (handlers.go)
-// These stubs allow the package to compile while tools.go references them.
-func (s *Server) handleAskQuestions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultError("not implemented"), nil
-}
-
-func (s *Server) handleFinishSpec(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultError("not implemented"), nil
 }
