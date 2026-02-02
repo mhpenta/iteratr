@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/gosimple/slug"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -101,8 +102,8 @@ func (s *Server) handleFinishSpec(ctx context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError("missing or empty 'name' parameter"), nil
 	}
 
-	// TODO (TAS-11): Implement slugify function with transliteration
-	slug := name // Use name directly for now, TAS-11 will implement proper slugify
+	// Slugify name with transliteration
+	slug := slugify(name)
 
 	// Validate spec content
 	if err := validateSpecContent(content); err != nil {
@@ -330,4 +331,15 @@ func containsSection(content, section string) bool {
 // hasPrefix checks if string starts with prefix
 func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
+}
+
+// slugify converts a string to a URL-friendly slug format.
+// Performs transliteration of Unicode characters to ASCII,
+// converts to lowercase, replaces spaces with hyphens,
+// and removes non-alphanumeric characters except hyphens.
+func slugify(s string) string {
+	// Use gosimple/slug for transliteration and normalization
+	// This handles: lowercase conversion, space->hyphen, unicode->ASCII,
+	// and removes characters that aren't alphanumeric or hyphens
+	return slug.Make(s)
 }

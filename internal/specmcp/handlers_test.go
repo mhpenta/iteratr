@@ -3,6 +3,8 @@ package specmcp
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -650,6 +652,229 @@ Some intro.
 				text := extractText(result)
 				assert.Contains(t, text, "Spec saved successfully")
 			}
+		})
+	}
+}
+
+func TestHandleFinishSpec_Slugification(t *testing.T) {
+	tests := []struct {
+		name         string
+		specName     string
+		wantFilename string
+	}{
+		{
+			name:         "simple lowercase name",
+			specName:     "my-feature",
+			wantFilename: "my-feature.md",
+		},
+		{
+			name:         "uppercase to lowercase",
+			specName:     "My Feature Name",
+			wantFilename: "my-feature-name.md",
+		},
+		{
+			name:         "spaces to hyphens",
+			specName:     "new feature spec",
+			wantFilename: "new-feature-spec.md",
+		},
+		{
+			name:         "special characters removed",
+			specName:     "feature! & spec?",
+			wantFilename: "feature-and-spec.md",
+		},
+		{
+			name:         "unicode transliteration",
+			specName:     "café résumé",
+			wantFilename: "cafe-resume.md",
+		},
+		{
+			name:         "cyrillic transliteration",
+			specName:     "новая функция",
+			wantFilename: "novaia-funktsiia.md",
+		},
+		{
+			name:         "chinese transliteration",
+			specName:     "新功能",
+			wantFilename: "xin-gong-neng.md",
+		},
+		{
+			name:         "mixed special chars and unicode",
+			specName:     "User Auth & Authz (Schön)",
+			wantFilename: "user-auth-and-authz-schon.md",
+		},
+	}
+
+	validContent := `# Test Spec
+
+## Overview
+Test overview content here.
+
+## Tasks
+- [ ] Task 1
+- [ ] Task 2
+`
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp directory for test
+			tmpDir := t.TempDir()
+			srv := New(tmpDir)
+
+			request := mcp.CallToolRequest{}
+			request.Params.Arguments = map[string]any{
+				"name":    tt.specName,
+				"content": validContent,
+			}
+
+			ctx := context.Background()
+			result, err := srv.handleFinishSpec(ctx, request)
+			require.NoError(t, err)
+			require.False(t, result.IsError, "expected success result")
+
+			// Verify file was created with correct slugified name
+			expectedPath := filepath.Join(tmpDir, tt.wantFilename)
+			_, err = os.Stat(expectedPath)
+			require.NoError(t, err, "file should exist at path: %s", expectedPath)
+
+			// Verify response contains correct path
+			text := extractText(result)
+			assert.Contains(t, text, tt.wantFilename)
+		})
+	}
+}
+
+func TestSlugify(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "simple lowercase",
+			input: "hello",
+			want:  "hello",
+		},
+		{
+			name:  "uppercase to lowercase",
+			input: "Hello World",
+			want:  "hello-world",
+		},
+		{
+			name:  "spaces to hyphens",
+			input: "my feature name",
+			want:  "my-feature-name",
+		},
+		{
+			name:  "multiple spaces",
+			input: "hello    world",
+			want:  "hello-world",
+		},
+		{
+			name:  "leading and trailing spaces",
+			input: "  hello world  ",
+			want:  "hello-world",
+		},
+		{
+			name:  "already hyphenated",
+			input: "my-feature-name",
+			want:  "my-feature-name",
+		},
+		{
+			name:  "mixed hyphens and spaces",
+			input: "my-feature name",
+			want:  "my-feature-name",
+		},
+		{
+			name:  "special characters removed",
+			input: "hello! world?",
+			want:  "hello-world",
+		},
+		{
+			name:  "punctuation removed",
+			input: "feature, name: here",
+			want:  "feature-name-here",
+		},
+		{
+			name:  "unicode transliteration - accented chars",
+			input: "café résumé",
+			want:  "cafe-resume",
+		},
+		{
+			name:  "unicode transliteration - German umlauts",
+			input: "Schöne Grüße",
+			want:  "schone-grusse",
+		},
+		{
+			name:  "unicode transliteration - Polish",
+			input: "Łódź",
+			want:  "lodz",
+		},
+		{
+			name:  "unicode transliteration - Cyrillic",
+			input: "привет мир",
+			want:  "privet-mir",
+		},
+		{
+			name:  "unicode transliteration - Chinese",
+			input: "北京",
+			want:  "bei-jing",
+		},
+		{
+			name:  "unicode transliteration - Japanese",
+			input: "東京",
+			want:  "dong-jing",
+		},
+		{
+			name:  "mixed ASCII and unicode",
+			input: "Hello Wörld",
+			want:  "hello-world",
+		},
+		{
+			name:  "underscores preserved",
+			input: "hello_world_test",
+			want:  "hello_world_test",
+		},
+		{
+			name:  "numbers preserved",
+			input: "feature-123",
+			want:  "feature-123",
+		},
+		{
+			name:  "complex real world example",
+			input: "User Authentication & Authorization",
+			want:  "user-authentication-and-authorization",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "only special chars",
+			input: "!!!???",
+			want:  "",
+		},
+		{
+			name:  "consecutive hyphens collapsed",
+			input: "hello---world",
+			want:  "hello-world",
+		},
+		{
+			name:  "parentheses and brackets",
+			input: "feature (v2) [beta]",
+			want:  "feature-v2-beta",
+		},
+		{
+			name:  "slash to hyphen",
+			input: "api/v1/users",
+			want:  "api-v1-users",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := slugify(tt.input)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
