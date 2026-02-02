@@ -1,14 +1,10 @@
 package tui
 
 import (
-	"fmt"
-
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
-	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // Compile-time interface checks
@@ -154,24 +150,6 @@ func (d *Dashboard) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	return nil
 }
 
-// renderSessionInfo renders the session name and iteration number.
-func (d *Dashboard) renderSessionInfo() string {
-	s := theme.Current().S()
-	var parts []string
-
-	// Session name
-	sessionLabel := s.Base.Render("Session:")
-	sessionValue := s.Bright.Render(d.sessionName)
-	parts = append(parts, sessionLabel+" "+sessionValue)
-
-	// Iteration number
-	iterationLabel := s.Base.Render("Iteration:")
-	iterationValue := s.Bright.Render(fmt.Sprintf("#%d", d.iteration))
-	parts = append(parts, iterationLabel+" "+iterationValue)
-
-	return lipgloss.JoinVertical(lipgloss.Left, parts...)
-}
-
 // SetSize updates the dashboard dimensions (implements Sizable interface).
 func (d *Dashboard) SetSize(width, height int) {
 	d.width = width
@@ -242,67 +220,4 @@ func (d *Dashboard) updateScrollListFocus() {
 		d.sidebar.SetTasksScrollFocused(d.focusPane == FocusTasks && d.focusPane != FocusInput)
 		d.sidebar.SetNotesScrollFocused(d.focusPane == FocusNotes && d.focusPane != FocusInput)
 	}
-}
-
-// renderProgressIndicator renders a progress bar showing task completion.
-func (d *Dashboard) renderProgressIndicator() string {
-	// Count tasks by status
-	stats := d.getTaskStats()
-
-	// Build progress bar
-	const barWidth = 40
-	var completedWidth int
-	if stats.Total > 0 {
-		completedWidth = (stats.Completed * barWidth) / stats.Total
-	}
-
-	// Create the bar with filled and empty portions
-	filled := ""
-	empty := ""
-	for i := 0; i < completedWidth; i++ {
-		filled += "█"
-	}
-	for i := completedWidth; i < barWidth; i++ {
-		empty += "░"
-	}
-
-	// Format the progress text
-	progressText := fmt.Sprintf("%d/%d tasks", stats.Completed, stats.Total)
-
-	s := theme.Current().S()
-	// Combine bar and text
-	bar := s.Success.Render(filled) + s.Muted.Render(empty)
-	label := s.Base.Render("Progress:")
-	return fmt.Sprintf("%s [%s] %s", label, bar, s.Bright.Render(progressText))
-}
-
-// progressStats holds task statistics.
-type progressStats struct {
-	Total      int
-	Remaining  int
-	InProgress int
-	Completed  int
-	Blocked    int
-}
-
-// getTaskStats computes task statistics.
-func (d *Dashboard) getTaskStats() progressStats {
-	var stats progressStats
-	if d.state == nil {
-		return stats
-	}
-	for _, task := range d.state.Tasks {
-		stats.Total++
-		switch task.Status {
-		case "remaining":
-			stats.Remaining++
-		case "in_progress":
-			stats.InProgress++
-		case "completed":
-			stats.Completed++
-		case "blocked":
-			stats.Blocked++
-		}
-	}
-	return stats
 }
