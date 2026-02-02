@@ -29,3 +29,4 @@
 | [session-pause](./session-pause.md) | Draft | Pause/resume sessions via ctrl+x p, status bar indicator |
 | [git-status-bar](./git-status-bar.md) | Draft | Display git branch, hash, dirty state, ahead/behind in status bar |
 | [2026-02-02-dead-code-cleanup](./2026-02-02-dead-code-cleanup.md) | Draft | Remove ~720 lines of dead code: unused files, legacy methods, orphaned helpers |
+| [sidebar-toggle](./sidebar-toggle.md) | Draft | Ctrl+x b toggles sidebar visibility, persists preference, responsive behavior |
