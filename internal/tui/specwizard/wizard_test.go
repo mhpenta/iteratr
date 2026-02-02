@@ -381,3 +381,330 @@ func TestWizardModel_PreferredHeight(t *testing.T) {
 		t.Errorf("Expected preferred height %d, got %d", m.nameStep.PreferredHeight(), height)
 	}
 }
+
+// TestWizardModel_ConfirmationModal_Show tests that ESC on agent phase shows confirmation modal
+func TestWizardModel_ConfirmationModal_Show(t *testing.T) {
+	m := &WizardModel{
+		step:    3, // Agent phase
+		width:   80,
+		height:  24,
+		specDir: "./specs",
+	}
+
+	// Press ESC during agent phase - should show confirmation modal
+	msg := tea.KeyPressMsg{Text: "esc"}
+	model, cmd := m.Update(msg)
+	wm := model.(*WizardModel)
+
+	if !wm.confirmCancelling {
+		t.Error("Expected confirmation modal to be shown after ESC on agent phase")
+	}
+	if wm.cancelled {
+		t.Error("Expected wizard not to be cancelled immediately, should show confirmation first")
+	}
+	if cmd != nil {
+		t.Error("Expected no command when showing confirmation modal")
+	}
+	if wm.confirmFocusYes {
+		t.Error("Expected focus to be on 'No' button by default")
+	}
+}
+
+// TestWizardModel_ConfirmationModal_Dismiss tests dismissing the confirmation modal
+func TestWizardModel_ConfirmationModal_Dismiss(t *testing.T) {
+	m := &WizardModel{
+		step:              3,
+		confirmCancelling: true, // Modal already showing
+		confirmFocusYes:   false,
+		width:             80,
+		height:            24,
+		specDir:           "./specs",
+	}
+
+	// Press ESC while modal showing - should dismiss it
+	msg := tea.KeyPressMsg{Text: "esc"}
+	model, cmd := m.Update(msg)
+	wm := model.(*WizardModel)
+
+	if wm.confirmCancelling {
+		t.Error("Expected confirmation modal to be dismissed after ESC")
+	}
+	if wm.cancelled {
+		t.Error("Expected wizard not to be cancelled after dismissing modal")
+	}
+	if cmd != nil {
+		t.Error("Expected no command when dismissing modal")
+	}
+}
+
+// TestWizardModel_ConfirmationModal_ConfirmNo tests confirming 'No' (don't cancel)
+func TestWizardModel_ConfirmationModal_ConfirmNo(t *testing.T) {
+	m := &WizardModel{
+		step:              3,
+		confirmCancelling: true,
+		confirmFocusYes:   false, // Focus on "No"
+		width:             80,
+		height:            24,
+		specDir:           "./specs",
+	}
+
+	// Press Enter with "No" focused - should dismiss modal and continue
+	msg := tea.KeyPressMsg{Text: "enter"}
+	model, cmd := m.Update(msg)
+	wm := model.(*WizardModel)
+
+	if wm.confirmCancelling {
+		t.Error("Expected confirmation modal to be dismissed after confirming No")
+	}
+	if wm.cancelled {
+		t.Error("Expected wizard not to be cancelled after confirming No")
+	}
+	if cmd != nil {
+		t.Error("Expected no command when confirming No")
+	}
+}
+
+// TestWizardModel_ConfirmationModal_ConfirmYes tests confirming 'Yes' (cancel wizard)
+func TestWizardModel_ConfirmationModal_ConfirmYes(t *testing.T) {
+	m := &WizardModel{
+		step:              3,
+		confirmCancelling: true,
+		confirmFocusYes:   true, // Focus on "Yes"
+		width:             80,
+		height:            24,
+		specDir:           "./specs",
+	}
+
+	// Press Enter with "Yes" focused - should cancel wizard
+	msg := tea.KeyPressMsg{Text: "enter"}
+	model, cmd := m.Update(msg)
+	wm := model.(*WizardModel)
+
+	if !wm.cancelled {
+		t.Error("Expected wizard to be cancelled after confirming Yes")
+	}
+	if cmd == nil || cmd() != tea.Quit() {
+		t.Error("Expected Quit command after confirming Yes")
+	}
+}
+
+// TestWizardModel_ConfirmationModal_ToggleFocus tests toggling focus between Yes/No
+func TestWizardModel_ConfirmationModal_ToggleFocus(t *testing.T) {
+	tests := []struct {
+		name         string
+		initialFocus bool
+		key          string
+		expectFocus  bool
+	}{
+		{
+			name:         "Tab from No to Yes",
+			initialFocus: false,
+			key:          "tab",
+			expectFocus:  true,
+		},
+		{
+			name:         "Tab from Yes to No",
+			initialFocus: true,
+			key:          "tab",
+			expectFocus:  false,
+		},
+		{
+			name:         "Left from Yes to No",
+			initialFocus: true,
+			key:          "left",
+			expectFocus:  false,
+		},
+		{
+			name:         "Right from No to Yes",
+			initialFocus: false,
+			key:          "right",
+			expectFocus:  true,
+		},
+		{
+			name:         "Shift+Tab from No to Yes",
+			initialFocus: false,
+			key:          "shift+tab",
+			expectFocus:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &WizardModel{
+				step:              3,
+				confirmCancelling: true,
+				confirmFocusYes:   tt.initialFocus,
+				width:             80,
+				height:            24,
+				specDir:           "./specs",
+			}
+
+			msg := tea.KeyPressMsg{Text: tt.key}
+			model, _ := m.Update(msg)
+			wm := model.(*WizardModel)
+
+			if wm.confirmFocusYes != tt.expectFocus {
+				t.Errorf("Expected confirmFocusYes=%v, got %v", tt.expectFocus, wm.confirmFocusYes)
+			}
+			if !wm.confirmCancelling {
+				t.Error("Expected confirmation modal to still be showing")
+			}
+		})
+	}
+}
+
+// TestWizardModel_ConfirmationModal_QuickKeys tests quick 'y' and 'n' keys
+func TestWizardModel_ConfirmationModal_QuickKeys(t *testing.T) {
+	tests := []struct {
+		name            string
+		key             string
+		expectCanceled  bool
+		expectModalOpen bool
+	}{
+		{
+			name:            "Quick 'y' key cancels wizard",
+			key:             "y",
+			expectCanceled:  true,
+			expectModalOpen: false,
+		},
+		{
+			name:            "Quick 'n' key dismisses modal",
+			key:             "n",
+			expectCanceled:  false,
+			expectModalOpen: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &WizardModel{
+				step:              3,
+				confirmCancelling: true,
+				confirmFocusYes:   false,
+				width:             80,
+				height:            24,
+				specDir:           "./specs",
+			}
+
+			msg := tea.KeyPressMsg{Text: tt.key}
+			model, cmd := m.Update(msg)
+			wm := model.(*WizardModel)
+
+			if wm.cancelled != tt.expectCanceled {
+				t.Errorf("Expected cancelled=%v, got %v", tt.expectCanceled, wm.cancelled)
+			}
+			if wm.confirmCancelling != tt.expectModalOpen {
+				t.Errorf("Expected confirmCancelling=%v, got %v", tt.expectModalOpen, wm.confirmCancelling)
+			}
+			if tt.expectCanceled && (cmd == nil || cmd() != tea.Quit()) {
+				t.Error("Expected Quit command when cancelling")
+			}
+		})
+	}
+}
+
+// TestWizardModel_ConfirmationModal_IgnoresOtherKeys tests that other keys are ignored
+func TestWizardModel_ConfirmationModal_IgnoresOtherKeys(t *testing.T) {
+	m := &WizardModel{
+		step:              3,
+		confirmCancelling: true,
+		confirmFocusYes:   false,
+		width:             80,
+		height:            24,
+		specDir:           "./specs",
+	}
+
+	// Press an unhandled key - should be ignored
+	msg := tea.KeyPressMsg{Text: "x"}
+	model, cmd := m.Update(msg)
+	wm := model.(*WizardModel)
+
+	if !wm.confirmCancelling {
+		t.Error("Expected confirmation modal to still be showing")
+	}
+	if wm.cancelled {
+		t.Error("Expected wizard not to be cancelled")
+	}
+	if cmd != nil {
+		t.Error("Expected no command for unhandled key")
+	}
+}
+
+// TestWizardModel_ConfirmationModal_BlocksStepInput tests that confirmation modal blocks step input
+func TestWizardModel_ConfirmationModal_BlocksStepInput(t *testing.T) {
+	m := &WizardModel{
+		step:              3,
+		confirmCancelling: true,
+		confirmFocusYes:   false,
+		width:             80,
+		height:            24,
+		specDir:           "./specs",
+	}
+
+	// Press a key that would normally be handled by step - should be ignored
+	msg := tea.KeyPressMsg{Text: "down"}
+	_, cmd := m.Update(msg)
+
+	// Command should be nil because modal intercepts all input
+	if cmd != nil {
+		t.Error("Expected modal to block step input")
+	}
+}
+
+// TestWizardModel_ConfirmationModal_ViewOverlay tests that confirmation modal renders as overlay
+func TestWizardModel_ConfirmationModal_ViewOverlay(t *testing.T) {
+	m := &WizardModel{
+		step:              3,
+		confirmCancelling: true,
+		confirmFocusYes:   false,
+		width:             80,
+		height:            24,
+		specDir:           "./specs",
+	}
+
+	view := m.View()
+
+	// View should render (basic smoke test)
+	if view.Content == nil {
+		t.Error("Expected view content to not be nil")
+	}
+
+	// View should still have alt screen and mouse mode
+	if !view.AltScreen {
+		t.Error("Expected AltScreen to be enabled")
+	}
+}
+
+// TestWizardModel_ConfirmationModal_OnlyOnAgentPhase tests that confirmation only shows on step 3
+func TestWizardModel_ConfirmationModal_OnlyOnAgentPhase(t *testing.T) {
+	// Test that ESC on other steps doesn't trigger confirmation modal
+	tests := []struct {
+		step int
+		name string
+	}{
+		{step: 0, name: "step 0 (name)"},
+		{step: 1, name: "step 1 (description)"},
+		{step: 2, name: "step 2 (model)"},
+		{step: 4, name: "step 4 (completion)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &WizardModel{
+				step:    tt.step,
+				width:   80,
+				height:  24,
+				specDir: "./specs",
+			}
+			m.initCurrentStep()
+
+			msg := tea.KeyPressMsg{Text: "esc"}
+			model, _ := m.Update(msg)
+			wm := model.(*WizardModel)
+
+			if wm.confirmCancelling {
+				t.Errorf("Expected confirmation modal NOT to show on step %d", tt.step)
+			}
+		})
+	}
+}

@@ -35,6 +35,10 @@ type WizardModel struct {
 	height    int              // Terminal height
 	specDir   string           // Spec directory from config
 
+	// Confirmation state (for agent phase cancellation)
+	confirmCancelling bool // True if showing "Are you sure you want to cancel?" modal
+	confirmFocusYes   bool // True if "Yes" button focused, false if "No" focused
+
 	// Step components
 	nameStep        *NameStep                 // Step 0: Name input
 	descriptionStep interface{}               // Step 1: Description textarea (placeholder) //nolint:unused
@@ -92,6 +96,41 @@ func (m *WizardModel) Init() tea.Cmd {
 func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		// Handle confirmation modal input first (overrides everything)
+		if m.confirmCancelling {
+			switch msg.String() {
+			case "esc":
+				// ESC dismisses the confirmation modal
+				m.confirmCancelling = false
+				return m, nil
+			case "tab", "left", "right", "shift+tab":
+				// Toggle focus between Yes/No
+				m.confirmFocusYes = !m.confirmFocusYes
+				return m, nil
+			case "enter", " ":
+				// Activate focused button
+				if m.confirmFocusYes {
+					// Yes - cancel the wizard
+					m.cancelled = true
+					return m, tea.Quit
+				}
+				// No - dismiss confirmation and continue
+				m.confirmCancelling = false
+				return m, nil
+			case "y":
+				// Quick "y" key to confirm
+				m.cancelled = true
+				m.confirmCancelling = false
+				return m, tea.Quit
+			case "n":
+				// Quick "n" key to dismiss
+				m.confirmCancelling = false
+				return m, nil
+			}
+			// Any other key - ignore
+			return m, nil
+		}
+
 		// Handle button-focused keyboard input (only for input steps 0-2)
 		if m.buttonFocused && m.buttonBar != nil && m.step <= 2 {
 			switch msg.String() {
@@ -133,9 +172,10 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Input steps - go back
 				return m.goBack()
 			} else if m.step == 3 {
-				// Agent phase - show confirmation modal (TODO: implement)
-				// For now, just go back
-				return m.goBack()
+				// Agent phase - show confirmation modal
+				m.confirmCancelling = true
+				m.confirmFocusYes = false // Default focus on "No"
+				return m, nil
 			} else if m.step == 4 {
 				// Completion step - let it handle ESC (exits)
 				return m, nil
@@ -550,6 +590,16 @@ func (m *WizardModel) View() tea.View {
 		Max: uv.Position{X: m.width, Y: m.height},
 	})
 
+	// If confirmation modal is showing, overlay it on top
+	if m.confirmCancelling {
+		// Draw confirmation modal on the canvas
+		confirmModal := m.renderConfirmationModal()
+		uv.NewStyledString(confirmModal).Draw(canvas, uv.Rectangle{
+			Min: uv.Position{X: 0, Y: 0},
+			Max: uv.Position{X: m.width, Y: m.height},
+		})
+	}
+
 	view.Content = lipgloss.NewLayer(canvas.Render())
 	return view
 }
@@ -663,4 +713,65 @@ func (m *WizardModel) isStepValid() bool {
 		return false
 	}
 	return false
+}
+
+// renderConfirmationModal renders the "Are you sure you want to cancel?" modal
+// overlay for agent phase cancellation.
+func (m *WizardModel) renderConfirmationModal() string {
+	// Modal dimensions
+	modalWidth := 60
+	modalHeight := 8
+
+	t := theme.Current()
+
+	// Build content
+	var lines []string
+	lines = append(lines, "")
+	lines = append(lines, "  Are you sure you want to cancel?")
+	lines = append(lines, "")
+	lines = append(lines, "  This will discard the interview and exit the wizard.")
+	lines = append(lines, "")
+
+	// Render buttons
+	yesStyle := lipgloss.NewStyle().
+		Padding(0, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(t.Primary))
+	noStyle := lipgloss.NewStyle().
+		Padding(0, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(t.FgMuted))
+
+	// Apply focus styling
+	if m.confirmFocusYes {
+		yesStyle = yesStyle.
+			Background(lipgloss.Color(t.Primary)).
+			Foreground(lipgloss.Color(t.BgBase)).
+			Bold(true)
+	} else {
+		noStyle = noStyle.
+			Background(lipgloss.Color(t.Primary)).
+			Foreground(lipgloss.Color(t.BgBase)).
+			Bold(true)
+	}
+
+	yesBtn := yesStyle.Render("Yes")
+	noBtn := noStyle.Render("No")
+
+	// Center buttons
+	buttons := lipgloss.JoinHorizontal(lipgloss.Center, yesBtn, "  ", noBtn)
+	buttonLine := lipgloss.NewStyle().Width(modalWidth - 4).Align(lipgloss.Center).Render(buttons)
+	lines = append(lines, buttonLine)
+
+	content := strings.Join(lines, "\n")
+
+	// Apply modal container style
+	modalStyle := t.S().ModalContainer.Width(modalWidth).Height(modalHeight)
+	modalContent := modalStyle.Render(content)
+
+	// Center on screen
+	return lipgloss.Place(m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		modalContent,
+	)
 }
