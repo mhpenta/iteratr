@@ -530,10 +530,11 @@ func TestOnFileChangeCallback(t *testing.T) {
 
 func TestBuildMcpServerSlice(t *testing.T) {
 	tests := []struct {
-		name       string
-		mcpURL     string
-		wantLength int
-		wantServer McpServer
+		name          string
+		mcpURL        string
+		mcpServerName string
+		wantLength    int
+		wantServer    McpServer
 	}{
 		{
 			name:       "empty URL returns empty slice",
@@ -541,13 +542,25 @@ func TestBuildMcpServerSlice(t *testing.T) {
 			wantLength: 0,
 		},
 		{
-			name:       "valid URL builds server struct",
+			name:       "valid URL builds server struct with default name",
 			mcpURL:     "http://localhost:8080/mcp",
 			wantLength: 1,
 			wantServer: McpServer{
 				Type:    "http",
 				Name:    "iteratr-tools",
 				URL:     "http://localhost:8080/mcp",
+				Headers: []HttpHeader{},
+			},
+		},
+		{
+			name:          "valid URL with custom server name",
+			mcpURL:        "http://localhost:9090/mcp",
+			mcpServerName: "iteratr-spec",
+			wantLength:    1,
+			wantServer: McpServer{
+				Type:    "http",
+				Name:    "iteratr-spec",
+				URL:     "http://localhost:9090/mcp",
 				Headers: []HttpHeader{},
 			},
 		},
@@ -558,9 +571,13 @@ func TestBuildMcpServerSlice(t *testing.T) {
 			// Build the slice (same logic as in newSession/LoadSession)
 			mcpServers := []McpServer{}
 			if tt.mcpURL != "" {
+				name := tt.mcpServerName
+				if name == "" {
+					name = "iteratr-tools" // Default for backwards compatibility
+				}
 				mcpServers = append(mcpServers, McpServer{
 					Type:    "http",
-					Name:    "iteratr-tools",
+					Name:    name,
 					URL:     tt.mcpURL,
 					Headers: []HttpHeader{},
 				})

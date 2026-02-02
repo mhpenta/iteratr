@@ -151,12 +151,18 @@ func (c *acpConn) initialize(ctx context.Context) error {
 }
 
 // newSession creates a new ACP session and returns the session ID.
-func (c *acpConn) newSession(ctx context.Context, cwd, mcpURL string) (string, error) {
+// mcpServerName is the name to register the MCP server as (e.g., "iteratr-tools", "iteratr-spec").
+// If empty, defaults to "iteratr-tools" for backwards compatibility.
+func (c *acpConn) newSession(ctx context.Context, cwd, mcpURL, mcpServerName string) (string, error) {
 	mcpServers := []McpServer{}
 	if mcpURL != "" {
+		name := mcpServerName
+		if name == "" {
+			name = "iteratr-tools" // Default for backwards compatibility
+		}
 		mcpServers = append(mcpServers, McpServer{
 			Type:    "http",
-			Name:    "iteratr-tools",
+			Name:    name,
 			URL:     mcpURL,
 			Headers: []HttpHeader{},
 		})
@@ -218,12 +224,18 @@ func (c *acpConn) newSession(ctx context.Context, cwd, mcpURL string) (string, e
 // LoadSession loads an existing ACP session and returns the session ID.
 // After LoadSession returns, the caller must continue reading notifications
 // to replay the full session history until EOF.
-func (c *acpConn) LoadSession(ctx context.Context, sessionID, cwd, mcpURL string) (string, error) {
+// mcpServerName is the name to register the MCP server as (e.g., "iteratr-tools", "iteratr-spec").
+// If empty, defaults to "iteratr-tools" for backwards compatibility.
+func (c *acpConn) LoadSession(ctx context.Context, sessionID, cwd, mcpURL, mcpServerName string) (string, error) {
 	mcpServers := []McpServer{}
 	if mcpURL != "" {
+		name := mcpServerName
+		if name == "" {
+			name = "iteratr-tools" // Default for backwards compatibility
+		}
 		mcpServers = append(mcpServers, McpServer{
 			Type:    "http",
-			Name:    "iteratr-tools",
+			Name:    name,
 			URL:     mcpURL,
 			Headers: []HttpHeader{},
 		})

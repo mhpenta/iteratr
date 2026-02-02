@@ -1,3 +1,17 @@
+// Package agent provides the Runner for executing opencode acp subprocesses with ACP protocol.
+//
+// The Runner supports connecting to MCP servers to provide tools to the agent.
+// Each MCP server is registered with a name (e.g., "iteratr-tools", "iteratr-spec")
+// that the agent uses to identify which server provides which tools.
+//
+// Example usage for spec wizard:
+//
+//	runner := agent.NewRunner(agent.RunnerConfig{
+//	    Model:         "anthropic/claude-sonnet-4-5",
+//	    MCPServerURL:  "http://localhost:8080/mcp",
+//	    MCPServerName: "iteratr-spec", // Custom name for spec wizard tools
+//	    // ... other callbacks
+//	})
 package agent
 
 import (
@@ -13,16 +27,17 @@ import (
 
 // Runner manages the execution of opencode run subprocess for each iteration.
 type Runner struct {
-	model        string
-	workDir      string
-	sessionName  string
-	natsPort     int
-	mcpServerURL string
-	onText       func(text string)
-	onToolCall   func(ToolCallEvent)
-	onThinking   func(string)
-	onFinish     func(FinishEvent)
-	onFileChange func(FileChange)
+	model         string
+	workDir       string
+	sessionName   string
+	natsPort      int
+	mcpServerURL  string
+	mcpServerName string
+	onText        func(text string)
+	onToolCall    func(ToolCallEvent)
+	onThinking    func(string)
+	onFinish      func(FinishEvent)
+	onFileChange  func(FileChange)
 
 	// ACP subprocess (reused) and current session (created fresh per iteration)
 	conn      *acpConn
@@ -32,31 +47,33 @@ type Runner struct {
 
 // RunnerConfig holds configuration for creating a new Runner.
 type RunnerConfig struct {
-	Model        string              // LLM model to use (e.g., "anthropic/claude-sonnet-4-5")
-	WorkDir      string              // Working directory for agent
-	SessionName  string              // Session name
-	NATSPort     int                 // NATS server port for tool CLI
-	MCPServerURL string              // MCP server URL for tool access
-	OnText       func(text string)   // Callback for text output
-	OnToolCall   func(ToolCallEvent) // Callback for tool lifecycle events
-	OnThinking   func(string)        // Callback for thinking/reasoning output
-	OnFinish     func(FinishEvent)   // Callback for iteration finish events
-	OnFileChange func(FileChange)    // Callback for file modifications
+	Model         string              // LLM model to use (e.g., "anthropic/claude-sonnet-4-5")
+	WorkDir       string              // Working directory for agent
+	SessionName   string              // Session name
+	NATSPort      int                 // NATS server port for tool CLI
+	MCPServerURL  string              // MCP server URL for tool access
+	MCPServerName string              // MCP server name (e.g., "iteratr-tools", "iteratr-spec"), defaults to "iteratr-tools" if empty
+	OnText        func(text string)   // Callback for text output
+	OnToolCall    func(ToolCallEvent) // Callback for tool lifecycle events
+	OnThinking    func(string)        // Callback for thinking/reasoning output
+	OnFinish      func(FinishEvent)   // Callback for iteration finish events
+	OnFileChange  func(FileChange)    // Callback for file modifications
 }
 
 // NewRunner creates a new Runner instance.
 func NewRunner(cfg RunnerConfig) *Runner {
 	return &Runner{
-		model:        cfg.Model,
-		workDir:      cfg.WorkDir,
-		sessionName:  cfg.SessionName,
-		natsPort:     cfg.NATSPort,
-		mcpServerURL: cfg.MCPServerURL,
-		onText:       cfg.OnText,
-		onToolCall:   cfg.OnToolCall,
-		onThinking:   cfg.OnThinking,
-		onFinish:     cfg.OnFinish,
-		onFileChange: cfg.OnFileChange,
+		model:         cfg.Model,
+		workDir:       cfg.WorkDir,
+		sessionName:   cfg.SessionName,
+		natsPort:      cfg.NATSPort,
+		mcpServerURL:  cfg.MCPServerURL,
+		mcpServerName: cfg.MCPServerName,
+		onText:        cfg.OnText,
+		onToolCall:    cfg.OnToolCall,
+		onThinking:    cfg.OnThinking,
+		onFinish:      cfg.OnFinish,
+		onFileChange:  cfg.OnFileChange,
 	}
 }
 
@@ -135,7 +152,7 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string, hookOutput str
 
 	// Create fresh session for this iteration (clean context)
 	logger.Debug("Creating new ACP session for iteration")
-	sessID, err := r.conn.newSession(ctx, r.workDir, r.mcpServerURL)
+	sessID, err := r.conn.newSession(ctx, r.workDir, r.mcpServerURL, r.mcpServerName)
 	if err != nil {
 		return fmt.Errorf("ACP new session failed: %w", err)
 	}
