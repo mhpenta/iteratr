@@ -35,14 +35,35 @@ func (s *Server) handleAskQuestions(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError("at least one question is required"), nil
 	}
 
-	// TODO (TAS-8): Parse questions into proper structs
-	// TODO (TAS-8): Send questions to UI via channel
-	// TODO (TAS-8): Block waiting for answers
-	// TODO (TAS-9): Collect answers and format response
-	// TODO (TAS-10): Handle multi-select support
+	// Parse all questions
+	questions := make([]*question, 0, len(questionsArray))
+	for i, qRaw := range questionsArray {
+		qMap, ok := qRaw.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError(fmt.Sprintf("question %d is not an object", i)), nil
+		}
 
-	// Stub response
-	return mcp.NewToolResultError("ask-questions not implemented"), nil
+		q, err := parseQuestion(qMap)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("question %d invalid: %v", i, err)), nil
+		}
+
+		questions = append(questions, q)
+	}
+
+	// TODO (TAS-8): Send questions to UI via channel and block waiting for answers
+	// For now, return stub empty answers
+	answers := make([]any, len(questions))
+	for i, q := range questions {
+		if q.Multiple {
+			answers[i] = []string{} // Empty array for multi-select
+		} else {
+			answers[i] = "" // Empty string for single-select
+		}
+	}
+
+	// Format and return answers as JSON
+	return formatAnswersResponse(answers)
 }
 
 // handleFinishSpec saves the completed spec to a file and updates README.md.
@@ -167,6 +188,40 @@ func parseQuestion(raw map[string]any) (*question, error) {
 		Options:  options,
 		Multiple: multiple,
 	}, nil
+}
+
+// formatAnswersResponse formats collected answers into an MCP tool result.
+// Answers can be strings (single-select) or []string (multi-select).
+// Returns a JSON-formatted result containing the answers array.
+func formatAnswersResponse(answers []any) (*mcp.CallToolResult, error) {
+	// Validate all answers are non-empty
+	for i, answer := range answers {
+		switch v := answer.(type) {
+		case string:
+			if v == "" {
+				return mcp.NewToolResultError(fmt.Sprintf("answer %d is empty", i)), nil
+			}
+		case []string:
+			if len(v) == 0 {
+				return mcp.NewToolResultError(fmt.Sprintf("answer %d has no selections", i)), nil
+			}
+			// Check each selection is non-empty
+			for j, sel := range v {
+				if sel == "" {
+					return mcp.NewToolResultError(fmt.Sprintf("answer %d selection %d is empty", i, j)), nil
+				}
+			}
+		default:
+			return mcp.NewToolResultError(fmt.Sprintf("answer %d has invalid type: %T", i, answer)), nil
+		}
+	}
+
+	// Return answers as JSON content
+	result := map[string]any{
+		"answers": answers,
+	}
+
+	return mcp.NewToolResultJSON(result)
 }
 
 // saveSpecFile saves the spec content to the given file path.
