@@ -161,8 +161,13 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string, hookOutput str
 
 	// Send prompt and stream notifications to callbacks
 	// Wire onText, onToolCall, onThinking, and onFileChange callbacks through to prompt()
+	// Disable todoread/todowrite tools - iteratr manages its own task list via spec files
+	disabledTools := map[string]bool{
+		"todoread":  false,
+		"todowrite": false,
+	}
 	startTime := time.Now()
-	stopReason, err := r.conn.prompt(ctx, r.sessionID, texts, r.onText, r.onToolCall, r.onThinking, r.onFileChange)
+	stopReason, err := r.conn.prompt(ctx, r.sessionID, texts, disabledTools, r.onText, r.onToolCall, r.onThinking, r.onFileChange)
 	duration := time.Since(startTime)
 
 	if err != nil {
@@ -216,8 +221,9 @@ func (r *Runner) SendMessages(ctx context.Context, texts []string) error {
 	logger.Debug("Sending %d user message(s) to ACP session", len(texts))
 
 	// Send prompt with all messages as separate content blocks
+	// No tool restrictions for interactive user messages
 	startTime := time.Now()
-	stopReason, err := r.conn.prompt(ctx, r.sessionID, texts, r.onText, r.onToolCall, r.onThinking, r.onFileChange)
+	stopReason, err := r.conn.prompt(ctx, r.sessionID, texts, nil, r.onText, r.onToolCall, r.onThinking, r.onFileChange)
 	duration := time.Since(startTime)
 
 	if err != nil {

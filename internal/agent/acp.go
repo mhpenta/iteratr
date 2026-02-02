@@ -601,8 +601,9 @@ func (c *acpConn) setModel(ctx context.Context, sessionID, modelID string) error
 
 // prompt sends a prompt to the session and streams notifications via callbacks.
 // Accepts multiple text blocks which are sent as separate content blocks in the same request.
+// Optional tools map enables/disables specific tools (tool name -> enabled).
 // Returns the stop reason when the prompt completes or an error occurs.
-func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, onText func(string), onToolCall func(ToolCallEvent), onThinking func(string), onFileChange func(FileChange)) (string, error) {
+func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, tools map[string]bool, onText func(string), onToolCall func(ToolCallEvent), onThinking func(string), onFileChange func(FileChange)) (string, error) {
 	// Build content blocks from texts
 	blocks := make([]contentBlock, 0, len(texts))
 	for _, text := range texts {
@@ -617,6 +618,7 @@ func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, 
 	params := promptParams{
 		SessionID: sessionID,
 		Prompt:    blocks,
+		Tools:     tools,
 	}
 
 	reqID, err := c.sendRequest("session/prompt", params)
@@ -1020,8 +1022,9 @@ type setModelParams struct {
 }
 
 type promptParams struct {
-	SessionID string         `json:"sessionId"`
-	Prompt    []contentBlock `json:"prompt"`
+	SessionID string          `json:"sessionId"`
+	Prompt    []contentBlock  `json:"prompt"`
+	Tools     map[string]bool `json:"tools,omitempty"`
 }
 
 type contentBlock struct {
