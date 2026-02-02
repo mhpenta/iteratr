@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/mark3labs/iteratr/internal/agent"
 	"github.com/mark3labs/iteratr/internal/logger"
+	"github.com/mark3labs/iteratr/internal/specmcp"
 	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
@@ -34,21 +35,37 @@ type AgentPhase struct {
 	model       string // Selected model
 	specDir     string // Spec directory from config
 	mcpURL      string // MCP server URL
+
+	// Question handling
+	mcpServer         *specmcp.Server     // MCP server instance for question channel
+	questionBatch     []*specmcp.Question // Current batch of questions from MCP
+	currentQuestion   *specmcp.Question   // Current question being displayed
+	questionView      *QuestionView       // View for displaying question
+	questionIdx       int                 // Index of current question in batch
+	totalQuestions    int                 // Total questions in current batch
+	pendingAnswers    []any               // Collected answers for current batch
+	currentAnswerCh   chan<- []any        // Channel to send answers back to MCP handler
+	showingQuestion   bool                // True if currently displaying a question
+	customAnswerMode  bool                // True if user wants to type custom answer
+	customAnswerInput string              // Custom answer text input
 }
 
 // NewAgentPhase creates a new agent phase instance.
 // mcpURL is the URL for the iteratr-spec MCP server.
-func NewAgentPhase(name, description, model, specDir, mcpURL string) *AgentPhase {
+// mcpServer is the MCP server instance used to receive questions via its QuestionChannel.
+func NewAgentPhase(name, description, model, specDir, mcpURL string, mcpServer *specmcp.Server) *AgentPhase {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &AgentPhase{
-		name:         name,
-		description:  description,
-		model:        model,
-		specDir:      specDir,
-		mcpURL:       mcpURL,
-		runnerCtx:    ctx,
-		runnerCancel: cancel,
-		status:       "Starting agent...",
+		name:           name,
+		description:    description,
+		model:          model,
+		specDir:        specDir,
+		mcpURL:         mcpURL,
+		mcpServer:      mcpServer,
+		runnerCtx:      ctx,
+		runnerCancel:   cancel,
+		status:         "Starting agent...",
+		pendingAnswers: make([]any, 0),
 	}
 }
 
@@ -65,17 +82,35 @@ type AgentPhaseMsg struct {
 	Error   error  // Error if Type == "error"
 }
 
+// QuestionReceivedMsg is sent when the MCP server receives questions from the agent.
+type QuestionReceivedMsg struct {
+	Request *specmcp.QuestionRequest
+}
+
 // Init initializes the agent phase.
 func (a *AgentPhase) Init() tea.Cmd {
 	// Start spinner animation
 	spinner := NewDefaultGradientSpinner("Starting agent...")
 	a.spinner = &spinner
 
-	// Start the agent runner in a goroutine
+	// Start the agent runner in a goroutine and listen for questions from MCP
 	return tea.Batch(
 		a.spinner.Tick(),
 		a.startAgent,
+		a.listenForQuestions(),
 	)
+}
+
+// listenForQuestions listens for questions from the MCP server and sends them to the UI.
+func (a *AgentPhase) listenForQuestions() tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case req := <-a.mcpServer.QuestionChannel():
+			return QuestionReceivedMsg{Request: req}
+		case <-a.runnerCtx.Done():
+			return nil
+		}
+	}
 }
 
 // startAgent spawns the opencode acp subprocess and starts the interview.
@@ -173,6 +208,35 @@ Each spec should include:
 
 // Update handles messages for the agent phase.
 func (a *AgentPhase) Update(msg tea.Msg) tea.Cmd {
+	// Handle custom answer input mode
+	if a.customAnswerMode {
+		return a.handleCustomAnswerInput(msg)
+	}
+
+	// Handle question view if showing question
+	if a.showingQuestion && a.questionView != nil {
+		cmd := a.questionView.Update(msg)
+
+		// Check for answer submission
+		switch msg := msg.(type) {
+		case AnswerSelectedMsg:
+			// Single answer received
+			a.pendingAnswers = append(a.pendingAnswers, msg.Answer)
+			return a.moveToNextQuestion()
+		case MultiAnswerSelectedMsg:
+			// Multiple answers received
+			a.pendingAnswers = append(a.pendingAnswers, msg.Answers)
+			return a.moveToNextQuestion()
+		case CustomAnswerRequestedMsg:
+			// User wants to type custom answer
+			a.customAnswerMode = true
+			a.customAnswerInput = ""
+			return nil
+		}
+
+		return cmd
+	}
+
 	// Handle spinner animation
 	if a.spinner != nil {
 		if cmd := a.spinner.Update(msg); cmd != nil {
@@ -196,13 +260,118 @@ func (a *AgentPhase) Update(msg tea.Msg) tea.Cmd {
 			a.spinner = nil
 			return nil
 		}
+
+	case QuestionReceivedMsg:
+		// New questions batch received from MCP server
+		logger.Debug("Received %d questions from agent", len(msg.Request.Questions))
+		a.questionBatch = msg.Request.Questions
+		a.currentAnswerCh = msg.Request.AnswerCh
+		a.questionIdx = 0
+		a.totalQuestions = len(msg.Request.Questions)
+		a.pendingAnswers = make([]any, 0, a.totalQuestions)
+
+		// Display first question
+		return a.showQuestion(msg.Request.Questions[0])
 	}
 
 	return nil
 }
 
+// handleCustomAnswerInput handles keyboard input in custom answer mode.
+func (a *AgentPhase) handleCustomAnswerInput(msg tea.Msg) tea.Cmd {
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		switch keyMsg.String() {
+		case "enter":
+			// Submit custom answer if non-empty
+			if a.customAnswerInput != "" {
+				a.pendingAnswers = append(a.pendingAnswers, a.customAnswerInput)
+				a.customAnswerMode = false
+				return a.moveToNextQuestion()
+			}
+			// Empty input - do nothing
+			return nil
+
+		case "esc":
+			// Cancel custom answer - go back to question view
+			a.customAnswerMode = false
+			return nil
+
+		case "backspace":
+			if len(a.customAnswerInput) > 0 {
+				a.customAnswerInput = a.customAnswerInput[:len(a.customAnswerInput)-1]
+			}
+			return nil
+
+		default:
+			// Add character to input
+			if len(keyMsg.String()) == 1 {
+				a.customAnswerInput += keyMsg.String()
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+// showQuestion displays a question in the UI.
+func (a *AgentPhase) showQuestion(q *specmcp.Question) tea.Cmd {
+	a.currentQuestion = q
+	a.questionView = NewQuestionView(q)
+	a.questionView.SetSize(a.width, a.height)
+	a.showingQuestion = true
+	a.spinner = nil // Hide spinner while showing question
+
+	logger.Debug("Showing question: %s (%d/%d)", q.Header, a.questionIdx+1, a.totalQuestions)
+	return nil
+}
+
+// moveToNextQuestion moves to the next question or completes the batch.
+func (a *AgentPhase) moveToNextQuestion() tea.Cmd {
+	a.questionIdx++
+
+	if a.questionIdx < a.totalQuestions {
+		// More questions in this batch - show next
+		logger.Debug("Moving to next question (%d/%d)", a.questionIdx+1, a.totalQuestions)
+		return a.showQuestion(a.questionBatch[a.questionIdx])
+	}
+
+	// All questions answered - send answers back to MCP handler
+	logger.Debug("All questions answered, sending %d answers back to MCP", len(a.pendingAnswers))
+
+	// Send answers through the channel (non-blocking)
+	go func() {
+		a.currentAnswerCh <- a.pendingAnswers
+	}()
+
+	// Reset question state and show spinner again
+	a.showingQuestion = false
+	a.questionView = nil
+	a.currentQuestion = nil
+	a.currentAnswerCh = nil
+	a.status = "Agent is analyzing your answers..."
+	spinner := NewDefaultGradientSpinner(a.status)
+	a.spinner = &spinner
+
+	// Continue listening for more questions
+	return tea.Batch(
+		a.spinner.Tick(),
+		a.listenForQuestions(),
+	)
+}
+
 // View renders the agent phase UI.
 func (a *AgentPhase) View() string {
+	// Show custom answer input mode
+	if a.customAnswerMode {
+		return a.renderCustomAnswerInput()
+	}
+
+	// Show question view if displaying a question
+	if a.showingQuestion && a.questionView != nil {
+		return a.questionView.View()
+	}
+
+	// Show spinner/status while agent is thinking
 	var sections []string
 
 	// Title
@@ -234,6 +403,60 @@ func (a *AgentPhase) View() string {
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
 	// Center content on screen
+	return lipgloss.Place(a.width, a.height,
+		lipgloss.Center, lipgloss.Center,
+		content,
+	)
+}
+
+// renderCustomAnswerInput renders the custom answer input view.
+func (a *AgentPhase) renderCustomAnswerInput() string {
+	var sections []string
+
+	t := theme.Current()
+
+	// Title
+	title := "Spec Wizard - Interview"
+	sections = append(sections, t.S().ModalTitle.Render(title))
+	sections = append(sections, "")
+
+	// Question header
+	if a.currentQuestion != nil {
+		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(t.Primary)).Bold(true)
+		sections = append(sections, headerStyle.Render(a.currentQuestion.Header))
+		sections = append(sections, "")
+
+		// Question text
+		questionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4"))
+		sections = append(sections, questionStyle.Render(a.currentQuestion.Question))
+		sections = append(sections, "")
+	}
+
+	// Custom answer label
+	label := "Type your answer:"
+	sections = append(sections, label)
+	sections = append(sections, "")
+
+	// Text input box
+	inputStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(t.Primary)).
+		Padding(0, 1).
+		Width(a.width - 10)
+
+	inputContent := a.customAnswerInput
+	if inputContent == "" {
+		inputContent = t.S().Dim.Render("(type your answer...)")
+	}
+	sections = append(sections, inputStyle.Render(inputContent))
+	sections = append(sections, "")
+
+	// Instructions
+	instructions := t.S().Dim.Render("Press Enter to submit • ESC to go back")
+	sections = append(sections, instructions)
+
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+
 	return lipgloss.Place(a.width, a.height,
 		lipgloss.Center, lipgloss.Center,
 		content,
