@@ -402,3 +402,202 @@ func TestQuestionReceivedMsg(t *testing.T) {
 	assert.Equal(t, 1, len(msg.Request.Questions))
 	assert.Equal(t, q, msg.Request.Questions[0])
 }
+
+func TestAgentPhase_ThinkingCallback(t *testing.T) {
+	mcpServer := specmcp.New("./specs")
+	phase := NewAgentPhase("test", "desc", "model", "./specs", "http://localhost:8080/mcp", mcpServer)
+	phase.SetSize(80, 24)
+
+	// Simulate thinking message from agent callback
+	thinkingMsg := AgentPhaseMsg{
+		Type:    "thinking",
+		Content: "I need to ask about error handling...",
+	}
+
+	// Update should handle thinking message and update status
+	cmd := phase.Update(thinkingMsg)
+	assert.NotNil(t, cmd, "Update should return command to continue listening")
+	assert.Contains(t, phase.status, "I need to ask about error handling")
+
+	// Verify status is truncated if too long
+	longThinking := AgentPhaseMsg{
+		Type:    "thinking",
+		Content: "This is a very long thinking message that should be truncated because it exceeds eighty characters in length",
+	}
+	cmd = phase.Update(longThinking)
+	assert.NotNil(t, cmd)
+	assert.LessOrEqual(t, len(phase.status), 90) // "Agent: " + 80 chars + "..."
+	assert.Contains(t, phase.status, "Agent:")
+}
+
+func TestAgentPhase_TextCallback(t *testing.T) {
+	mcpServer := specmcp.New("./specs")
+	phase := NewAgentPhase("test", "desc", "model", "./specs", "http://localhost:8080/mcp", mcpServer)
+
+	// Text messages should be handled but not displayed (agent output hidden in spec wizard)
+	textMsg := AgentPhaseMsg{
+		Type:    "text",
+		Content: "Some agent text output",
+	}
+
+	cmd := phase.Update(textMsg)
+	assert.NotNil(t, cmd, "Update should return command to continue listening")
+	// Text doesn't update status - it's hidden from user
+	assert.NotContains(t, phase.status, "Some agent text output")
+}
+
+func TestAgentPhase_FinishedCallback(t *testing.T) {
+	mcpServer := specmcp.New("./specs")
+	phase := NewAgentPhase("test", "desc", "model", "./specs", "http://localhost:8080/mcp", mcpServer)
+	phase.isRunning = true
+	spinner := NewDefaultGradientSpinner("Agent is working...")
+	phase.spinner = &spinner
+
+	// Simulate finished message from agent callback
+	finishedMsg := AgentPhaseMsg{
+		Type:    "finished",
+		Content: "end_turn",
+	}
+
+	cmd := phase.Update(finishedMsg)
+	assert.NotNil(t, cmd, "Update should return command to continue listening")
+	assert.True(t, phase.finished)
+	assert.False(t, phase.isRunning)
+	assert.Nil(t, phase.spinner, "Spinner should be hidden when finished")
+	assert.Equal(t, "Interview complete! Generating spec...", phase.status)
+}
+
+func TestAgentPhase_ErrorCallback(t *testing.T) {
+	mcpServer := specmcp.New("./specs")
+	phase := NewAgentPhase("test", "desc", "model", "./specs", "http://localhost:8080/mcp", mcpServer)
+	phase.isRunning = true
+	spinner := NewDefaultGradientSpinner("Agent is working...")
+	phase.spinner = &spinner
+
+	// Simulate error message from agent callback
+	errorMsg := AgentPhaseMsg{
+		Type:  "error",
+		Error: assert.AnError,
+	}
+
+	cmd := phase.Update(errorMsg)
+	assert.NotNil(t, cmd, "Update should return command to continue listening")
+	assert.True(t, phase.finished)
+	assert.False(t, phase.isRunning)
+	assert.Nil(t, phase.spinner, "Spinner should be hidden on error")
+	assert.NotNil(t, phase.err)
+	assert.Equal(t, assert.AnError, phase.err)
+
+	// View should show error
+	view := phase.View()
+	assert.Contains(t, view, "Error:")
+}
+
+func TestAgentPhase_StartedCallback(t *testing.T) {
+	mcpServer := specmcp.New("./specs")
+	phase := NewAgentPhase("test", "desc", "model", "./specs", "http://localhost:8080/mcp", mcpServer)
+
+	// Simulate started message
+	startedMsg := AgentPhaseMsg{
+		Type:    "started",
+		Content: "Agent started successfully",
+	}
+
+	cmd := phase.Update(startedMsg)
+	assert.NotNil(t, cmd, "Update should return command to continue listening")
+}
+
+func TestAgentPhase_MessageChannelBuffering(t *testing.T) {
+	mcpServer := specmcp.New("./specs")
+	phase := NewAgentPhase("test", "desc", "model", "./specs", "http://localhost:8080/mcp", mcpServer)
+
+	// Verify message channel is buffered
+	assert.NotNil(t, phase.msgChan)
+
+	// Should be able to send multiple messages without blocking
+	phase.msgChan <- AgentPhaseMsg{Type: "thinking", Content: "msg1"}
+	phase.msgChan <- AgentPhaseMsg{Type: "thinking", Content: "msg2"}
+	phase.msgChan <- AgentPhaseMsg{Type: "thinking", Content: "msg3"}
+
+	// Receive and verify messages
+	msg1 := <-phase.msgChan
+	assert.Equal(t, "thinking", msg1.Type)
+	assert.Equal(t, "msg1", msg1.Content)
+
+	msg2 := <-phase.msgChan
+	assert.Equal(t, "thinking", msg2.Type)
+	assert.Equal(t, "msg2", msg2.Content)
+
+	msg3 := <-phase.msgChan
+	assert.Equal(t, "thinking", msg3.Type)
+	assert.Equal(t, "msg3", msg3.Content)
+}
+
+func TestAgentPhase_ContinuesListeningAfterAnswers(t *testing.T) {
+	mcpServer := specmcp.New("./specs")
+	phase := NewAgentPhase("test", "desc", "model", "./specs", "http://localhost:8080/mcp", mcpServer)
+	phase.SetSize(80, 24)
+
+	// Set up question batch
+	answerCh := make(chan []any, 1)
+	q := &specmcp.Question{
+		Question: "Test question?",
+		Header:   "Test",
+		Options: []specmcp.QuestionOption{
+			{Label: "Option A", Description: "First option"},
+		},
+		Multiple: false,
+	}
+	phase.questionBatch = []*specmcp.Question{q}
+	phase.currentQuestion = q
+	phase.questionView = NewQuestionView(q)
+	phase.questionIdx = 0
+	phase.totalQuestions = 1
+	phase.currentAnswerCh = answerCh
+	phase.showingQuestion = true
+	phase.pendingAnswers = []any{}
+
+	// Submit answer
+	answerMsg := AnswerSelectedMsg{Answer: "Option A"}
+	cmd := phase.Update(answerMsg)
+
+	// Should return batch command that includes listening for agent messages
+	assert.NotNil(t, cmd, "moveToNextQuestion should return batch command")
+	assert.False(t, phase.showingQuestion, "Should hide question after last answer")
+	assert.Equal(t, "Agent is analyzing your answers...", phase.status)
+}
+
+func TestAgentPhase_ThinkingStatusWhileShowingQuestion(t *testing.T) {
+	mcpServer := specmcp.New("./specs")
+	phase := NewAgentPhase("test", "desc", "model", "./specs", "http://localhost:8080/mcp", mcpServer)
+	phase.SetSize(80, 24)
+
+	// Not showing a question yet - agent is thinking
+	phase.showingQuestion = false
+
+	// Thinking message arrives
+	thinkingMsg := AgentPhaseMsg{
+		Type:    "thinking",
+		Content: "Processing your previous answer...",
+	}
+
+	// Status should be updated with thinking content
+	cmd := phase.Update(thinkingMsg)
+	assert.NotNil(t, cmd)
+	assert.Contains(t, phase.status, "Processing your previous answer")
+
+	// Now start showing a question
+	q := &specmcp.Question{
+		Question: "Test question?",
+		Header:   "Test",
+		Options: []specmcp.QuestionOption{
+			{Label: "Option A", Description: "First option"},
+		},
+		Multiple: false,
+	}
+	phase.showQuestion(q)
+
+	// View should show question, not the thinking status
+	view := phase.View()
+	assert.Contains(t, view, "Test question?")
+}

@@ -48,6 +48,9 @@ type AgentPhase struct {
 	showingQuestion   bool                // True if currently displaying a question
 	customAnswerMode  bool                // True if user wants to type custom answer
 	customAnswerInput string              // Custom answer text input
+
+	// Agent callback channel for sending events from goroutines
+	msgChan agentPhaseMsgChan // Buffered channel for agent callbacks
 }
 
 // NewAgentPhase creates a new agent phase instance.
@@ -66,6 +69,7 @@ func NewAgentPhase(name, description, model, specDir, mcpURL string, mcpServer *
 		runnerCancel:   cancel,
 		status:         "Starting agent...",
 		pendingAnswers: make([]any, 0),
+		msgChan:        make(agentPhaseMsgChan, 10), // Buffered to prevent blocking callbacks
 	}
 }
 
@@ -77,9 +81,20 @@ type GradientSpinner struct {
 
 // AgentPhaseMsg is sent by the agent phase to communicate events.
 type AgentPhaseMsg struct {
-	Type    string // "text", "thinking", "finished", "error"
+	Type    string // "text", "thinking", "finished", "error", "started"
 	Content string // Message content
 	Error   error  // Error if Type == "error"
+}
+
+// agentPhaseMsgChan is a buffered channel for sending agent messages from callbacks.
+// Callbacks run in goroutines, so we need a way to send tea.Msg back to the UI.
+type agentPhaseMsgChan chan AgentPhaseMsg
+
+// toCmd converts the channel to a tea.Cmd that waits for the next message.
+func (ch agentPhaseMsgChan) toCmd() tea.Cmd {
+	return func() tea.Msg {
+		return <-ch
+	}
 }
 
 // QuestionReceivedMsg is sent when the MCP server receives questions from the agent.
@@ -98,6 +113,7 @@ func (a *AgentPhase) Init() tea.Cmd {
 		a.spinner.Tick(),
 		a.startAgent,
 		a.listenForQuestions(),
+		a.msgChan.toCmd(), // Listen for agent callback messages
 	)
 }
 
@@ -131,6 +147,12 @@ func (a *AgentPhase) startAgent() tea.Msg {
 		OnText: func(text string) {
 			// Text output from agent (not used in spec wizard - agent output hidden)
 			logger.Debug("Agent text: %s", text)
+			// Send text message to UI (non-blocking)
+			select {
+			case a.msgChan <- AgentPhaseMsg{Type: "text", Content: text}:
+			default:
+				logger.Warn("Agent message channel full, dropping text message")
+			}
 		},
 		OnToolCall: func(event agent.ToolCallEvent) {
 			// Tool calls from agent (ask-questions, finish-spec handled by MCP server)
@@ -139,11 +161,33 @@ func (a *AgentPhase) startAgent() tea.Msg {
 		OnThinking: func(text string) {
 			// Thinking/reasoning from agent - update status
 			logger.Debug("Agent thinking: %s", text)
-			// TODO: Send thinking msg to update UI status
+			// Send thinking message to update UI status (non-blocking)
+			select {
+			case a.msgChan <- AgentPhaseMsg{Type: "thinking", Content: text}:
+			default:
+				logger.Warn("Agent message channel full, dropping thinking message")
+			}
 		},
 		OnFinish: func(event agent.FinishEvent) {
 			logger.Debug("Agent finished: %s", event.StopReason)
-			// TODO: Send finish msg
+			// Send finish message
+			var msg AgentPhaseMsg
+			if event.Error != "" {
+				msg = AgentPhaseMsg{
+					Type:  "error",
+					Error: fmt.Errorf("%s", event.Error),
+				}
+			} else {
+				msg = AgentPhaseMsg{
+					Type:    "finished",
+					Content: event.StopReason,
+				}
+			}
+			select {
+			case a.msgChan <- msg:
+			default:
+				logger.Warn("Agent message channel full, dropping finish message")
+			}
 		},
 		OnFileChange: nil, // No file change tracking for spec wizard
 	}
@@ -248,17 +292,41 @@ func (a *AgentPhase) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case AgentPhaseMsg:
 		switch msg.Type {
+		case "thinking":
+			// Update status with thinking text (truncate if too long)
+			thinkingText := msg.Content
+			if len(thinkingText) > 80 {
+				thinkingText = thinkingText[:77] + "..."
+			}
+			a.status = fmt.Sprintf("Agent: %s", thinkingText)
+			// Continue listening for more messages
+			return a.msgChan.toCmd()
+
+		case "text":
+			// Text output from agent (hidden from user in spec wizard, just log)
+			logger.Debug("Agent text: %s", msg.Content)
+			// Continue listening for more messages
+			return a.msgChan.toCmd()
+
 		case "error":
 			a.err = msg.Error
 			a.finished = true
 			a.isRunning = false
 			a.spinner = nil
-			return nil
+			// Continue listening (but won't receive more since finished)
+			return a.msgChan.toCmd()
+
 		case "finished":
 			a.finished = true
 			a.isRunning = false
 			a.spinner = nil
-			return nil
+			a.status = "Interview complete! Generating spec..."
+			// Continue listening (but won't receive more since finished)
+			return a.msgChan.toCmd()
+
+		case "started":
+			// Agent started successfully - continue listening
+			return a.msgChan.toCmd()
 		}
 
 	case QuestionReceivedMsg:
@@ -352,10 +420,11 @@ func (a *AgentPhase) moveToNextQuestion() tea.Cmd {
 	spinner := NewDefaultGradientSpinner(a.status)
 	a.spinner = &spinner
 
-	// Continue listening for more questions
+	// Continue listening for more questions and agent messages
 	return tea.Batch(
 		a.spinner.Tick(),
 		a.listenForQuestions(),
+		a.msgChan.toCmd(),
 	)
 }
 
