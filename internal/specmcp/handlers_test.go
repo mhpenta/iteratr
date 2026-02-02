@@ -538,3 +538,299 @@ func TestHandleAskQuestions_InvalidQuestions(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleFinishSpec_Validation(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        map[string]any
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "valid spec content",
+			args: map[string]any{
+				"content": `# My Feature
+
+## Overview
+Feature description here.
+
+## Tasks
+- [ ] Task 1
+- [ ] Task 2
+`,
+				"name": "my-feature",
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing content parameter",
+			args: map[string]any{
+				"name": "my-feature",
+			},
+			wantErr:     true,
+			errContains: "missing or empty 'content' parameter",
+		},
+		{
+			name: "missing name parameter",
+			args: map[string]any{
+				"content": "# Overview\n## Tasks\n",
+			},
+			wantErr:     true,
+			errContains: "missing or empty 'name' parameter",
+		},
+		{
+			name: "empty content",
+			args: map[string]any{
+				"content": "",
+				"name":    "my-feature",
+			},
+			wantErr:     true,
+			errContains: "missing or empty 'content' parameter",
+		},
+		{
+			name: "content missing Overview section",
+			args: map[string]any{
+				"content": `# My Feature
+
+## Tasks
+- [ ] Task 1
+`,
+				"name": "my-feature",
+			},
+			wantErr:     true,
+			errContains: "invalid spec content: missing required section: Overview",
+		},
+		{
+			name: "content missing Tasks section",
+			args: map[string]any{
+				"content": `# My Feature
+
+## Overview
+Feature description.
+`,
+				"name": "my-feature",
+			},
+			wantErr:     true,
+			errContains: "invalid spec content: missing required section: Tasks",
+		},
+		{
+			name: "content missing both sections",
+			args: map[string]any{
+				"content": `# My Feature
+
+## Introduction
+Some intro.
+`,
+				"name": "my-feature",
+			},
+			wantErr:     true,
+			errContains: "invalid spec content: missing required sections: Overview, Tasks",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp directory for test
+			tmpDir := t.TempDir()
+			srv := New(tmpDir)
+
+			request := mcp.CallToolRequest{}
+			request.Params.Arguments = tt.args
+
+			ctx := context.Background()
+			result, err := srv.handleFinishSpec(ctx, request)
+			require.NoError(t, err) // Handler should never return error
+
+			if tt.wantErr {
+				assert.True(t, result.IsError, "expected error result")
+				assert.Contains(t, extractText(result), tt.errContains)
+			} else {
+				assert.False(t, result.IsError, "expected success result")
+				// Verify file was created
+				text := extractText(result)
+				assert.Contains(t, text, "Spec saved successfully")
+			}
+		})
+	}
+}
+
+func TestValidateSpecContent(t *testing.T) {
+	tests := []struct {
+		name        string
+		content     string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "valid spec with both sections",
+			content: `# My Feature Spec
+
+## Overview
+This is a feature spec that does something cool.
+
+## Tasks
+- [ ] Task 1
+- [ ] Task 2
+`,
+			wantErr: false,
+		},
+		{
+			name: "valid spec with Overview as h1",
+			content: `# Overview
+Feature description here.
+
+## Tasks
+- [ ] Do something
+`,
+			wantErr: false,
+		},
+		{
+			name: "valid spec with sections in different order",
+			content: `# Feature Name
+
+## Tasks
+- [ ] Build it
+
+## Overview
+What we're building.
+
+## Technical Details
+More info here.
+`,
+			wantErr: false,
+		},
+		{
+			name: "valid spec with extra spaces after section",
+			content: `## Overview  
+Some text here
+
+## Tasks  
+- [ ] Task
+`,
+			wantErr: false,
+		},
+		{
+			name: "sections without hash marks (not detected - acceptable)",
+			content: `Overview
+This is the overview.
+
+Tasks
+- [ ] Something
+`,
+			wantErr:     true,
+			errContains: "missing required sections: Overview, Tasks",
+		},
+		{
+			name: "missing Overview section",
+			content: `# My Feature
+
+## Tasks
+- [ ] Task 1
+- [ ] Task 2
+`,
+			wantErr:     true,
+			errContains: "missing required section: Overview",
+		},
+		{
+			name: "missing Tasks section",
+			content: `# My Feature
+
+## Overview
+Feature description here.
+
+## Implementation
+Some details.
+`,
+			wantErr:     true,
+			errContains: "missing required section: Tasks",
+		},
+		{
+			name: "missing both sections",
+			content: `# My Feature
+
+## Introduction
+Some intro text.
+
+## Conclusion
+Some conclusion.
+`,
+			wantErr:     true,
+			errContains: "missing required sections: Overview, Tasks",
+		},
+		{
+			name:        "empty content",
+			content:     "",
+			wantErr:     true,
+			errContains: "content is empty",
+		},
+		{
+			name: "sections as part of other words (false positive test)",
+			content: `# My Feature
+
+## OverviewExtra
+This should not match.
+
+## TasksManager
+This should not match either.
+`,
+			wantErr:     true,
+			errContains: "missing required sections: Overview, Tasks",
+		},
+		{
+			name:    "sections in code blocks detected (loose validation - acceptable)",
+			content: "# My Feature\n\n```\n## Overview\nThis is in a code block\n## Tasks\nAlso in code block\n```\n",
+			wantErr: false, // Loose validation doesn't parse code blocks
+		},
+		{
+			name: "case sensitive - lowercase sections",
+			content: `# My Feature
+
+## overview
+This should not match.
+
+## tasks
+This should not match either.
+`,
+			wantErr:     true,
+			errContains: "missing required sections: Overview, Tasks",
+		},
+		{
+			name: "sections in middle of line (should not match)",
+			content: `# My Feature
+
+Some text ## Overview here
+And ## Tasks here too
+`,
+			wantErr:     true,
+			errContains: "missing required sections: Overview, Tasks",
+		},
+		{
+			name: "multiple Overview and Tasks sections (should still pass)",
+			content: `## Overview
+First overview
+
+## Tasks
+First tasks
+
+## Overview
+Second overview (maybe nested)
+
+## Tasks  
+More tasks
+`,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSpecContent(tt.content)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

@@ -104,7 +104,10 @@ func (s *Server) handleFinishSpec(ctx context.Context, request mcp.CallToolReque
 	// TODO (TAS-11): Implement slugify function with transliteration
 	slug := name // Use name directly for now, TAS-11 will implement proper slugify
 
-	// TODO (TAS-12): Validate spec content (check for Overview, Tasks sections)
+	// Validate spec content
+	if err := validateSpecContent(content); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("invalid spec content: %v", err)), nil
+	}
 
 	// Build spec file path
 	specPath := filepath.Join(s.specDir, slug+".md")
@@ -237,4 +240,94 @@ func saveSpecFile(path string, content string) error {
 	}
 
 	return nil
+}
+
+// validateSpecContent performs loose validation on spec markdown content.
+// Checks for presence of required sections: Overview and Tasks.
+// Returns error if any required sections are missing.
+func validateSpecContent(content string) error {
+	if content == "" {
+		return fmt.Errorf("content is empty")
+	}
+
+	// Check for Overview section
+	hasOverview := containsSection(content, "Overview") || containsSection(content, "## Overview")
+
+	// Check for Tasks section
+	hasTasks := containsSection(content, "Tasks") || containsSection(content, "## Tasks")
+
+	// Report missing sections
+	if !hasOverview && !hasTasks {
+		return fmt.Errorf("missing required sections: Overview, Tasks")
+	}
+	if !hasOverview {
+		return fmt.Errorf("missing required section: Overview")
+	}
+	if !hasTasks {
+		return fmt.Errorf("missing required section: Tasks")
+	}
+
+	return nil
+}
+
+// containsSection checks if the content contains a markdown section header.
+// Looks for the section name as a heading (with # prefix or standalone).
+func containsSection(content, section string) bool {
+	if len(content) == 0 {
+		return false
+	}
+
+	// Look for section as markdown heading: "# Section", "## Section", etc.
+	// Pattern: newline or start-of-file, then "#" (one or more), space, section name, then newline or space
+
+	// Check at start of file
+	if hasPrefix(content, "#") {
+		// Find the section name after the # marks
+		idx := 0
+		for idx < len(content) && content[idx] == '#' {
+			idx++
+		}
+		// Skip whitespace after #
+		for idx < len(content) && content[idx] == ' ' {
+			idx++
+		}
+		// Check if section name matches
+		if hasPrefix(content[idx:], section) {
+			afterSection := idx + len(section)
+			if afterSection >= len(content) || content[afterSection] == '\n' || content[afterSection] == ' ' {
+				return true
+			}
+		}
+	}
+
+	// Check after newlines
+	searchStr := "\n#"
+	for i := 0; i <= len(content)-len(searchStr); i++ {
+		if content[i:i+len(searchStr)] == searchStr {
+			// Found "\n#" - now check if section name follows
+			idx := i + 1 // Skip the newline
+			// Skip # marks
+			for idx < len(content) && content[idx] == '#' {
+				idx++
+			}
+			// Skip whitespace
+			for idx < len(content) && content[idx] == ' ' {
+				idx++
+			}
+			// Check if section name matches
+			if hasPrefix(content[idx:], section) {
+				afterSection := idx + len(section)
+				if afterSection >= len(content) || content[afterSection] == '\n' || content[afterSection] == ' ' {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// hasPrefix checks if string starts with prefix
+func hasPrefix(s, prefix string) bool {
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
