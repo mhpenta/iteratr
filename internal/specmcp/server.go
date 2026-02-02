@@ -10,6 +10,26 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// QuestionRequest represents a question sent from the MCP handler to the UI.
+type QuestionRequest struct {
+	Questions []*Question
+	AnswerCh  chan<- []any // UI sends answers back through this channel
+}
+
+// Question represents a single question with multiple choice options.
+type Question struct {
+	Question string
+	Header   string
+	Options  []QuestionOption
+	Multiple bool
+}
+
+// QuestionOption represents a single option in a question.
+type QuestionOption struct {
+	Label       string
+	Description string
+}
+
 // Server manages an embedded MCP HTTP server that exposes spec wizard tools.
 // The server provides ask-questions and finish-spec tools to enable AI-assisted
 // spec generation through an interactive interview process.
@@ -19,13 +39,18 @@ type Server struct {
 	httpServer *server.StreamableHTTPServer
 	port       int
 	mu         sync.Mutex
+
+	// questionCh is used to send questions from MCP handler to UI
+	// MCP handler blocks until UI sends answers back
+	questionCh chan *QuestionRequest
 }
 
 // New creates a new MCP server instance for spec wizard.
 // The server is not started until Start() is called.
 func New(specDir string) *Server {
 	return &Server{
-		specDir: specDir,
+		specDir:    specDir,
+		questionCh: make(chan *QuestionRequest),
 	}
 }
 
@@ -113,4 +138,11 @@ func (s *Server) URL() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return fmt.Sprintf("http://localhost:%d/mcp", s.port)
+}
+
+// QuestionChannel returns the channel that the UI uses to receive questions.
+// The UI should read from this channel and send answers back via the AnswerCh
+// in each QuestionRequest.
+func (s *Server) QuestionChannel() <-chan *QuestionRequest {
+	return s.questionCh
 }

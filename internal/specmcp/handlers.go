@@ -36,7 +36,7 @@ func (s *Server) handleAskQuestions(ctx context.Context, request mcp.CallToolReq
 	}
 
 	// Parse all questions
-	questions := make([]*question, 0, len(questionsArray))
+	questions := make([]*Question, 0, len(questionsArray))
 	for i, qRaw := range questionsArray {
 		qMap, ok := qRaw.(map[string]any)
 		if !ok {
@@ -51,15 +51,29 @@ func (s *Server) handleAskQuestions(ctx context.Context, request mcp.CallToolReq
 		questions = append(questions, q)
 	}
 
-	// TODO (TAS-8): Send questions to UI via channel and block waiting for answers
-	// For now, return stub empty answers
-	answers := make([]any, len(questions))
-	for i, q := range questions {
-		if q.Multiple {
-			answers[i] = []string{} // Empty array for multi-select
-		} else {
-			answers[i] = "" // Empty string for single-select
-		}
+	// Create answer channel for UI to respond
+	answerCh := make(chan []any)
+
+	// Send questions to UI and block waiting for answers
+	req := &QuestionRequest{
+		Questions: questions,
+		AnswerCh:  answerCh,
+	}
+
+	select {
+	case s.questionCh <- req:
+		// Questions sent successfully, wait for answers
+	case <-ctx.Done():
+		return mcp.NewToolResultError("context cancelled while sending questions"), nil
+	}
+
+	// Block until UI sends answers back
+	var answers []any
+	select {
+	case answers = <-answerCh:
+		// Answers received
+	case <-ctx.Done():
+		return mcp.NewToolResultError("context cancelled while waiting for answers"), nil
 	}
 
 	// Format and return answers as JSON
@@ -111,25 +125,9 @@ func (s *Server) handleFinishSpec(ctx context.Context, request mcp.CallToolReque
 	return mcp.NewToolResultText(fmt.Sprintf("Spec saved successfully to: %s", specPath)), nil
 }
 
-// Stub helper types and functions for future implementation in TAS-8
-// These will be used to parse and handle questions from the MCP tool call.
-//
-//nolint:unused
-type question struct {
-	Question string
-	Header   string
-	Options  []questionOption
-	Multiple bool
-}
-
-//nolint:unused
-type questionOption struct {
-	Label       string
-	Description string
-}
-
-//nolint:unused
-func parseQuestion(raw map[string]any) (*question, error) {
+// parseQuestion parses a raw question object into a Question struct.
+// Validates required fields and returns error if any are missing or invalid.
+func parseQuestion(raw map[string]any) (*Question, error) {
 	// Extract question field
 	questionText, ok := raw["question"].(string)
 	if !ok || questionText == "" {
@@ -153,7 +151,7 @@ func parseQuestion(raw map[string]any) (*question, error) {
 		return nil, fmt.Errorf("'options' is not an array")
 	}
 
-	options := make([]questionOption, 0, len(optionsArray))
+	options := make([]QuestionOption, 0, len(optionsArray))
 	for i, optRaw := range optionsArray {
 		optMap, ok := optRaw.(map[string]any)
 		if !ok {
@@ -170,7 +168,7 @@ func parseQuestion(raw map[string]any) (*question, error) {
 			return nil, fmt.Errorf("option %d missing 'description' field", i)
 		}
 
-		options = append(options, questionOption{
+		options = append(options, QuestionOption{
 			Label:       label,
 			Description: description,
 		})
@@ -182,7 +180,7 @@ func parseQuestion(raw map[string]any) (*question, error) {
 		multiple = multipleVal
 	}
 
-	return &question{
+	return &Question{
 		Question: questionText,
 		Header:   header,
 		Options:  options,

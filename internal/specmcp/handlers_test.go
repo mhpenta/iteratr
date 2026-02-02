@@ -1,8 +1,10 @@
 package specmcp
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
@@ -18,6 +20,23 @@ func extractText(result *mcp.CallToolResult) string {
 		return textContent.Text
 	}
 	return ""
+}
+
+// extractJSON extracts JSON data from CallToolResult.Content[0]
+func extractJSON(result *mcp.CallToolResult) (map[string]any, bool) {
+	if len(result.Content) == 0 {
+		return nil, false
+	}
+
+	// Check if it's a TextContent with JSON
+	if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+		var data map[string]any
+		if err := json.Unmarshal([]byte(textContent.Text), &data); err == nil {
+			return data, true
+		}
+	}
+
+	return nil, false
 }
 
 func TestFormatAnswersResponse(t *testing.T) {
@@ -155,7 +174,7 @@ func TestParseQuestion(t *testing.T) {
 	tests := []struct {
 		name        string
 		raw         map[string]any
-		want        *question
+		want        *Question
 		wantErr     bool
 		errContains string
 	}{
@@ -175,10 +194,10 @@ func TestParseQuestion(t *testing.T) {
 					},
 				},
 			},
-			want: &question{
+			want: &Question{
 				Question: "What is your preferred approach?",
 				Header:   "Approach Selection",
-				Options: []questionOption{
+				Options: []QuestionOption{
 					{Label: "Option A", Description: "Use approach A"},
 					{Label: "Option B", Description: "Use approach B"},
 				},
@@ -198,10 +217,10 @@ func TestParseQuestion(t *testing.T) {
 				},
 				"multiple": true,
 			},
-			want: &question{
+			want: &Question{
 				Question: "Select all that apply",
 				Header:   "Multi-select",
-				Options: []questionOption{
+				Options: []QuestionOption{
 					{Label: "Option 1", Description: "First option"},
 				},
 				Multiple: true,
@@ -284,6 +303,238 @@ func TestParseQuestion(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, tt.want, got)
 			}
+		})
+	}
+}
+
+func TestHandleAskQuestions_ChannelBlocking(t *testing.T) {
+	tests := []struct {
+		name           string
+		questions      []any
+		simulateAnswer func(t *testing.T, req *QuestionRequest)
+		wantErr        bool
+		errContains    string
+		validate       func(t *testing.T, result *mcp.CallToolResult)
+	}{
+		{
+			name: "single question with answer",
+			questions: []any{
+				map[string]any{
+					"question": "What is your name?",
+					"header":   "Name",
+					"options": []any{
+						map[string]any{"label": "John", "description": "Name is John"},
+						map[string]any{"label": "Jane", "description": "Name is Jane"},
+					},
+				},
+			},
+			simulateAnswer: func(t *testing.T, req *QuestionRequest) {
+				require.Len(t, req.Questions, 1)
+				assert.Equal(t, "What is your name?", req.Questions[0].Question)
+				assert.Equal(t, "Name", req.Questions[0].Header)
+				require.Len(t, req.Questions[0].Options, 2)
+				// Send answer back
+				req.AnswerCh <- []any{"John"}
+			},
+			validate: func(t *testing.T, result *mcp.CallToolResult) {
+				require.False(t, result.IsError)
+				require.Len(t, result.Content, 1)
+				// Extract JSON content
+				content, ok := extractJSON(result)
+				require.True(t, ok, "content should be JSON object")
+				answers, ok := content["answers"].([]any)
+				require.True(t, ok, "should have answers array")
+				require.Len(t, answers, 1)
+				assert.Equal(t, "John", answers[0])
+			},
+		},
+		{
+			name: "multiple questions with mixed answers",
+			questions: []any{
+				map[string]any{
+					"question": "Pick one",
+					"header":   "Single",
+					"options": []any{
+						map[string]any{"label": "A", "description": "Option A"},
+					},
+				},
+				map[string]any{
+					"question": "Pick many",
+					"header":   "Multi",
+					"options": []any{
+						map[string]any{"label": "X", "description": "Option X"},
+						map[string]any{"label": "Y", "description": "Option Y"},
+					},
+					"multiple": true,
+				},
+			},
+			simulateAnswer: func(t *testing.T, req *QuestionRequest) {
+				require.Len(t, req.Questions, 2)
+				assert.False(t, req.Questions[0].Multiple)
+				assert.True(t, req.Questions[1].Multiple)
+				// Send mixed answer types
+				req.AnswerCh <- []any{"A", []string{"X", "Y"}}
+			},
+			validate: func(t *testing.T, result *mcp.CallToolResult) {
+				require.False(t, result.IsError)
+				content, ok := extractJSON(result)
+				require.True(t, ok)
+				answers, ok := content["answers"].([]any)
+				require.True(t, ok)
+				require.Len(t, answers, 2)
+				assert.Equal(t, "A", answers[0])
+				multiAnswer, ok := answers[1].([]any)
+				require.True(t, ok)
+				require.Len(t, multiAnswer, 2)
+			},
+		},
+		{
+			name: "context cancelled before question sent",
+			questions: []any{
+				map[string]any{
+					"question": "Question",
+					"header":   "Header",
+					"options":  []any{map[string]any{"label": "A", "description": "Desc"}},
+				},
+			},
+			simulateAnswer: func(t *testing.T, req *QuestionRequest) {
+				// Don't read from channel - let it block
+				t.Fatal("should not reach here")
+			},
+			wantErr:     true,
+			errContains: "context cancelled",
+		},
+		{
+			name: "context cancelled while waiting for answer",
+			questions: []any{
+				map[string]any{
+					"question": "Question",
+					"header":   "Header",
+					"options":  []any{map[string]any{"label": "A", "description": "Desc"}},
+				},
+			},
+			simulateAnswer: func(t *testing.T, req *QuestionRequest) {
+				// Read question but don't send answer
+				require.Len(t, req.Questions, 1)
+				// Don't send answer - let context cancel
+			},
+			wantErr:     true,
+			errContains: "context cancelled",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create server with question channel
+			srv := New("/tmp/test-specs")
+
+			// Create request
+			request := mcp.CallToolRequest{}
+			request.Params.Arguments = map[string]any{
+				"questions": tt.questions,
+			}
+
+			// Create context with timeout
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			// Handle questions in goroutine
+			resultCh := make(chan *mcp.CallToolResult)
+			go func() {
+				result, err := srv.handleAskQuestions(ctx, request)
+				require.NoError(t, err) // Handler should never return error, only error results
+				resultCh <- result
+			}()
+
+			// Simulate UI receiving and answering questions
+			if !tt.wantErr || tt.errContains == "context cancelled while waiting for answers" {
+				select {
+				case req := <-srv.QuestionChannel():
+					tt.simulateAnswer(t, req)
+				case <-time.After(50 * time.Millisecond):
+					t.Fatal("timeout waiting for question")
+				}
+			} else {
+				// For cancel before send test, just cancel immediately
+				cancel()
+			}
+
+			// Wait for result
+			select {
+			case result := <-resultCh:
+				if tt.wantErr {
+					assert.True(t, result.IsError, "expected error result")
+					assert.Contains(t, extractText(result), tt.errContains)
+				} else {
+					if tt.validate != nil {
+						tt.validate(t, result)
+					}
+				}
+			case <-time.After(200 * time.Millisecond):
+				t.Fatal("timeout waiting for result")
+			}
+		})
+	}
+}
+
+func TestHandleAskQuestions_InvalidQuestions(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        map[string]any
+		errContains string
+	}{
+		{
+			name:        "no arguments",
+			args:        nil,
+			errContains: "no arguments provided",
+		},
+		{
+			name:        "missing questions parameter",
+			args:        map[string]any{},
+			errContains: "missing 'questions' parameter",
+		},
+		{
+			name:        "questions not an array",
+			args:        map[string]any{"questions": "not an array"},
+			errContains: "'questions' is not an array",
+		},
+		{
+			name:        "empty questions array",
+			args:        map[string]any{"questions": []any{}},
+			errContains: "at least one question is required",
+		},
+		{
+			name: "question not an object",
+			args: map[string]any{
+				"questions": []any{"not an object"},
+			},
+			errContains: "question 0 is not an object",
+		},
+		{
+			name: "question missing required field",
+			args: map[string]any{
+				"questions": []any{
+					map[string]any{
+						"header":  "Header",
+						"options": []any{},
+					},
+				},
+			},
+			errContains: "question 0 invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := New("/tmp/test-specs")
+			request := mcp.CallToolRequest{}
+			request.Params.Arguments = tt.args
+
+			ctx := context.Background()
+			result, err := srv.handleAskQuestions(ctx, request)
+			require.NoError(t, err) // Handler should never return error
+			assert.True(t, result.IsError)
+			assert.Contains(t, extractText(result), tt.errContains)
 		})
 	}
 }
