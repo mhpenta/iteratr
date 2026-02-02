@@ -137,21 +137,6 @@ func (p *Pulse) IsActive() bool {
 	return p.active
 }
 
-// GetPulseStyle returns a lipgloss style with pulse effect applied
-func GetPulseStyle(base lipgloss.Style, intensity float64) lipgloss.Style {
-	if intensity <= 0 {
-		return base
-	}
-
-	t := theme.Current()
-	// Blend between base and highlight color based on intensity
-	// For now, just adjust the foreground color brightness
-	if intensity > 0.5 {
-		return base.Foreground(lipgloss.Color(t.Primary))
-	}
-	return base.Foreground(lipgloss.Color(t.Secondary))
-}
-
 // GradientSpinnerMsg is sent on each gradient spinner tick
 type GradientSpinnerMsg struct{}
 
